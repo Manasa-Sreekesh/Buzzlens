@@ -104,8 +104,11 @@ committed; keys are only ever sent to their own official API.
 ## Commands
 
 ```bash
-node scripts/search.js --topic "Galaxy AI" --sources youtube,reddit --time 7days
+node scripts/search.js --topic "Galaxy AI" --sources youtube,reddit               # defaults to the last 30 days
+node scripts/search.js --topic "Galaxy AI" --sources youtube,reddit --time 7days  # or --time 15days
 node scripts/search.js --topic "Product X" --sources community --community-urls "https://forum.example.com/thread/1,https://reviews.example.com/product-x"
+node scripts/search.js --topic "Product X" --sources youtube --video-urls "https://youtu.be/abc123XYZ89"
+node scripts/search.js --topic "Product X" --sources youtube --video-file youtube-videos.txt
 node scripts/save-summary.js <datasetId> --text "..."      # or --file <path>
 node scripts/dashboard.js <datasetId>                        # or --static for a single HTML file
 node scripts/list.js                                         # see saved datasets
@@ -113,6 +116,16 @@ node scripts/list.js                                         # see saved dataset
 
 `search.js` never recollects a topic you already have — reuse a saved dataset's id with
 `dashboard.js`/`save-summary.js`, or check `list.js` first.
+
+### Time window
+
+`--time` defaults to **the last 30 days** — every run prints this in its header so it's always clear what
+window was searched. Pass `--time 7days` or `--time 15days` for a narrower window, or `--time custom --start
+YYYY-MM-DD --end YYYY-MM-DD` for an exact range. This applies to every time-windowed source (YouTube topic
+search, Reddit, Twitter/X); `community` and an explicit YouTube `--video-urls`/`--video-file` list always
+fetch their exact targets regardless of `--time`. Twitter/X's recent-search API only covers roughly the last
+7 days regardless of what's requested — a platform limitation `search.js` reports rather than silently
+under-delivering.
 
 ### Community site source
 
@@ -133,6 +146,22 @@ node scripts/search.js --topic "Product X" --sources community \
 are optional and resolve within that container. Comments with no resolvable author are labeled `Anonymous
 #1`, `Anonymous #2`, etc. (unique per item — never a single shared label, so distinct-commenter counts stay
 meaningful) rather than guessing an identity.
+
+### Checking specific YouTube videos instead of a topic search
+
+If you already know which YouTube videos you want checked, skip the topic search and point at them
+directly with `--video-urls` (comma-separated, typed inline) or `--video-file` (a local text file, one
+video URL or ID per line) — use one or the other, not both, in the same run:
+
+```bash
+node scripts/search.js --topic "Product X" --sources youtube --video-urls "https://youtu.be/abc123XYZ89,def456UVW01"
+node scripts/search.js --topic "Product X" --sources youtube --video-file youtube-videos.txt
+```
+
+Copy `youtube-videos.example.txt` to `youtube-videos.txt` to keep a reusable list — accepted formats
+(watch URLs, `youtu.be` links, Shorts links, or bare 11-character video IDs) are documented in that file.
+`youtube-videos.txt` is gitignored, same as `.env`. Either flag skips the keyword search and the `--time`
+window for YouTube (an exact target list, not a time-windowed search) — same idea as `--community-urls`.
 
 ## Architecture
 
@@ -175,7 +204,7 @@ reports/
   <topic>_<timestamp>.html     # static dashboard exports
 ```
 
-`data/`, `reports/`, and `.env` are all gitignored.
+`data/`, `reports/`, `.env`, and `youtube-videos.txt` are all gitignored.
 
 ## Philosophy
 

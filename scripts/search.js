@@ -4,17 +4,31 @@
 // falls back to fake data. See ../SKILL.md for the full workflow.
 //
 // Usage:
-//   node scripts/search.js --topic "Galaxy AI" --sources youtube,reddit --time 7days
+//   node scripts/search.js --topic "Galaxy AI" --sources youtube,reddit                  # defaults to --time 30days
+//   node scripts/search.js --topic "Galaxy AI" --sources youtube,reddit --time 7days      # or 15days
 //   node scripts/search.js --topic "X" --sources youtube --keywords "AI,camera" --time custom --start 2026-01-01 --end 2026-02-01
 //   node scripts/search.js --topic "Product X" --sources community --community-urls "https://forum.example.com/thread/1,https://reviews.example.com/product-x"
 //   node scripts/search.js --topic "Product X" --sources community --community-urls "https://weird-site.example.com" --comment-selector ".weird-thing" --text-selector ".say" --author-selector ".who"
+//   node scripts/search.js --topic "Product X" --sources youtube --video-urls "https://youtu.be/dQw4w9WgXcQ,https://www.youtube.com/watch?v=abc12345678"
+//   node scripts/search.js --topic "Product X" --sources youtube --video-file youtube-videos.txt
 
+const fs = require('fs');
 const { loadEnv } = require('../lib/config/env');
 const { getCollector, listCollectors } = require('../lib/collectors');
 const { saveDataset } = require('../lib/storage/datasetWriter');
 const { checkSourceCredentials } = require('../lib/credentials');
 const { buildReport } = require('../lib/analysis/buildReport');
+const youtube = require('../lib/collectors/youtube');
+const { DEFAULT_TIME_PERIOD } = require('../lib/utils/dateRange');
 const logger = require('../lib/utils/logger');
+
+const TIME_PERIOD_LABELS = {
+  '24hours': 'the last 24 hours',
+  '7days': 'the last 7 days',
+  '15days': 'the last 15 days',
+  '30days': 'the last 30 days',
+  custom: 'a custom date range',
+};
 
 function parseArgs(argv) {
   const opts = {};
@@ -52,7 +66,11 @@ function printSummary(entry, report) {
   console.log('');
   logger.heading(`Dataset saved: ${entry.id}`);
   logger.step(`File: ${entry.filepath}`);
-  logger.step(`Topic: ${entry.topic} | Total items: ${stats.totalItems} | Sources: ${entry.sourcesSucceeded.join(', ') || 'none'}`);
+  const entryTimeLabel =
+    entry.timePeriod === 'custom'
+      ? `${entry.customStart} to ${entry.customEnd}`
+      : TIME_PERIOD_LABELS[entry.timePeriod] || entry.timePeriod;
+  logger.step(`Topic: ${entry.topic} | Window: ${entryTimeLabel} | Total items: ${stats.totalItems} | Sources: ${entry.sourcesSucceeded.join(', ') || 'none'}`);
   if (entry.sourcesFailed.length) {
     for (const f of entry.sourcesFailed) logger.warn(`  Skipped ${f.source}: ${f.reason}`);
   }
@@ -102,7 +120,11 @@ async function main() {
   if (invalid.length) return fail(`Unknown source(s): ${invalid.join(', ')}. Valid: ${validIds.join(', ')}.`);
   if (!sources.length) return fail(`--sources is required, e.g. --sources ${validIds.join(',')}.`);
 
-  const timePeriod = opts.time || '7days';
+  const validTimePeriods = ['24hours', '7days', '15days', '30days', 'custom'];
+  const timePeriod = opts.time || DEFAULT_TIME_PERIOD;
+  if (!validTimePeriods.includes(timePeriod)) {
+    return fail(`Unknown --time value "${timePeriod}". Valid: ${validTimePeriods.join(', ')} (default ${DEFAULT_TIME_PERIOD}).`);
+  }
   if (timePeriod === 'custom' && (!opts.start || !opts.end)) {
     return fail('--start and --end are required when --time custom is used.');
   }
@@ -127,6 +149,43 @@ async function main() {
         }
       : undefined;
 
+  if (opts['video-urls'] && opts['video-file']) {
+    return fail('Use either --video-urls or --video-file, not both — pick one.');
+  }
+  let videoIds = [];
+  if (opts['video-urls'] || opts['video-file']) {
+    if (!sources.includes('youtube')) {
+      return fail('--video-urls/--video-file require --sources to include youtube.');
+    }
+    let rawVideos;
+    if (opts['video-urls']) {
+      rawVideos = parseListArg(opts['video-urls']);
+    } else {
+      const filePath = String(opts['video-file']);
+      if (!fs.existsSync(filePath)) {
+        return fail(`--video-file not found: ${filePath}`);
+      }
+      rawVideos = fs
+        .readFileSync(filePath, 'utf8')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith('#'));
+    }
+    if (!rawVideos.length) {
+      return fail('No video URLs/IDs found — check --video-urls or the contents of --video-file.');
+    }
+    const invalidVideos = [];
+    for (const raw of rawVideos) {
+      const id = youtube.extractVideoId(raw);
+      if (id) videoIds.push(id);
+      else invalidVideos.push(raw);
+    }
+    if (invalidVideos.length) {
+      return fail(`Could not recognize as YouTube video URLs/IDs: ${invalidVideos.join(', ')}`);
+    }
+    videoIds = [...new Set(videoIds)];
+  }
+
   const query = {
     topic,
     keywords: parseListArg(opts.keywords),
@@ -135,10 +194,15 @@ async function main() {
     customEnd: opts.end,
     communityUrls,
     communitySelectors,
+    videoIds,
   };
   const sourceResults = [];
 
-  logger.heading(`Researching "${topic}"`);
+  const timeLabel = timePeriod === 'custom' ? `${opts.start} to ${opts.end}` : TIME_PERIOD_LABELS[timePeriod];
+  logger.heading(`Researching "${topic}" — ${timeLabel}`);
+  if (videoIds.length) {
+    logger.step(`YouTube: using ${videoIds.length} explicitly listed video(s) — skipping keyword search and the --time window for this source.`);
+  }
   for (const sourceId of sources) {
     const collector = getCollector(sourceId);
     const { ready, creds, reason } = checkSourceCredentials(sourceId);

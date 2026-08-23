@@ -33,16 +33,26 @@ Before running anything, ask the user (skip a question only if they've already a
    credential in `.env`. Ask whether to proceed via the API (check/collect the credential — see "If a
    source is skipped" below) or go another way instead — e.g. pointing at specific community URLs (the
    `community` source) if they'd rather not set up API access.
+4. **If YouTube is one of the sources: search by topic, or check specific videos?** — BuzzLens can either
+   search YouTube for the topic (the default), or, if the user already knows which videos they want checked,
+   collect comments from exactly those videos instead (see "YouTube: checking specific videos" below). If
+   they want specific videos, ask how they'll provide the list: pasted directly in chat, or via the local
+   `youtube-videos.txt` file — **one or the other, not both, in a single run.**
 
 Once you have the topic, sources, and (if relevant) URLs or credential decisions, run:
 
 ```
-node scripts/search.js --topic "<topic>" --sources youtube,reddit --time 7days
+node scripts/search.js --topic "<topic>" --sources youtube,reddit
 ```
 
 - `--topic` — the company, product, or feature to research (required). Not a person.
 - `--sources` — comma-separated: `youtube`, `reddit`, `twitter`, `community` (required) — from what the user chose above.
-- `--time` — `24hours` | `7days` | `30days` | `custom` (default `7days`). For `custom`, also pass `--start YYYY-MM-DD --end YYYY-MM-DD`. Not used by `community` (it fetches the exact page(s) given, not a time-windowed search).
+- `--time` — `24hours` | `7days` | `15days` | `30days` | `custom` (**default `30days`**). Don't ask the user
+  about this upfront — just tell them, once, that you're searching **the last 30 days** by default (the
+  command's own output says this too, so you don't need to repeat it every run). If they want a narrower
+  window, mention `--time 7days` or `--time 15days` are available and re-run with whichever they pick. For
+  `custom`, also pass `--start YYYY-MM-DD --end YYYY-MM-DD`. Not used by `community` (it fetches the exact
+  page(s) given, not a time-windowed search).
 - `--keywords` — optional comma-separated related keywords to narrow the search.
 
 If the user names a specific forum, review site, blog, or any other page with comments, use `community`
@@ -70,6 +80,30 @@ view or by fetching the page yourself first.) Comments with no resolvable author
 distinct-user counts below stay meaningful. This collector only reads static, server-rendered HTML — pages
 that render comments purely via JavaScript (some embedded widgets) won't be visible to it.
 
+### YouTube: checking specific videos instead of a topic search
+
+If the user already has particular YouTube videos in mind (rather than wanting BuzzLens to search by
+topic), collect from exactly those videos with `--video-urls` or `--video-file` — never both in the same
+run:
+
+```
+node scripts/search.js --topic "<topic>" --sources youtube --video-urls "https://youtu.be/abc123XYZ89,https://www.youtube.com/watch?v=def456UVW01"
+node scripts/search.js --topic "<topic>" --sources youtube --video-file youtube-videos.txt
+```
+
+- `--video-urls` — comma-separated, pasted directly by the user in chat. Accepts full watch/`youtu.be`/
+  shorts URLs or bare 11-character video IDs, any mix.
+- `--video-file` — path to a local text file, one video URL or ID per line (`#`-prefixed and blank lines
+  ignored). `youtube-videos.example.txt` in this skill's folder is the template — if the user wants to keep
+  a reusable list, have them (or you, on their instruction) copy it to `youtube-videos.txt` and edit it;
+  that file is gitignored, same as `.env`, so it never leaves their machine.
+- Either flag requires `--sources` to include `youtube`. Using either skips the topic/keyword search
+  entirely for YouTube — comments are collected straight from the named videos — and `--time` does not
+  apply to this source in that mode (mirrors how `--community-urls` behaves: an exact target list, not a
+  time-windowed search). Reddit/other sources in the same run are unaffected and still use `--time` normally.
+- An unrecognized entry (not a valid YouTube URL/ID) fails the whole command with exactly which entry(ies)
+  were bad, so the user can fix the list rather than silently skipping it.
+
 Before recollecting, check `node scripts/list.js` — if the topic was already researched recently, reuse
 that dataset id instead of running `search.js` again.
 
@@ -96,7 +130,7 @@ for a skipped or failed source.
 
 ## Phase 2: Analyze
 
-Using the printed data, write an analysis covering:
+Using the printed data, write a full analysis covering:
 - Overall sentiment, grounded in the reported split
 - What people like — cite real quotes from the positive clusters
 - What people don't like / pain points — cite real quotes from the negative clusters
@@ -104,8 +138,8 @@ Using the printed data, write an analysis covering:
 - Notable differences between sources, if any
 - What the data doesn't have enough evidence for — say so rather than guessing
 
-Present this directly in your response to the user. No required format — write it the way you'd naturally
-explain findings.
+This full analysis is for saving to the dashboard (Phase 3) — do **not** post it in the chat response.
+No required format — write it the way you'd naturally explain findings.
 
 ## Phase 3: Save
 
@@ -116,16 +150,25 @@ node scripts/save-summary.js <datasetId> --text "<your analysis>"
 `<datasetId>` is printed in Phase 1's output (e.g. `ds_abc123`). For long analyses, write to a temp file
 and use `--file <path>` instead of `--text`.
 
-## Phase 4: Offer the dashboard (optional)
+## Phase 4: Open the dashboard
+
+As soon as the summary is saved, open the dashboard automatically — don't ask first, and don't treat this
+as optional:
 
 ```
 node scripts/dashboard.js <datasetId>
 ```
 
-Opens a local visual dashboard — sentiment split, the same clusters/quotes, your saved analysis, and a
-basic Q&A box (local keyword matching against the dataset, not you — don't rely on it for anything you can
-just answer directly). Add `--static` to write a single shareable HTML file instead of starting a live
-server. Only offer this if useful — it's not required to complete the research.
+This starts a local server and opens the dashboard in the browser — sentiment split, the same
+clusters/quotes, your saved analysis, and a basic Q&A box (local keyword matching against the dataset, not
+you — don't rely on it for anything you can just answer directly). This is where the user reads the full
+analysis, not the chat. This command blocks the terminal on purpose (it keeps the server up for the Q&A
+box) — run it in the background rather than waiting on it.
+
+In the chat response itself, give only a brief stats summary — total items, sentiment split, per-source
+counts, that kind of thing (no quotes, no theme write-up) — then note that the dashboard has opened with
+the full analysis. If the environment can't open a browser (e.g. headless/remote), fall back to `--static`
+and share the generated file path instead.
 
 ## What NOT to do
 
