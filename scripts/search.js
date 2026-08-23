@@ -20,6 +20,7 @@ const { checkSourceCredentials } = require('../lib/credentials');
 const { buildReport } = require('../lib/analysis/buildReport');
 const youtube = require('../lib/collectors/youtube');
 const { DEFAULT_TIME_PERIOD } = require('../lib/utils/dateRange');
+const { ensureVisibleLink } = require('../lib/utils/visibleLink');
 const logger = require('../lib/utils/logger');
 
 const TIME_PERIOD_LABELS = {
@@ -109,6 +110,7 @@ function printSummary(entry, report) {
 
 async function main() {
   loadEnv();
+  ensureVisibleLink();
   const opts = parseArgs(process.argv.slice(2));
 
   const topic = String(opts.topic || '').trim();

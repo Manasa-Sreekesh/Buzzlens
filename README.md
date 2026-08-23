@@ -57,6 +57,14 @@ research a topic (or invoke it explicitly with `/buzzlens`); it reads `SKILL.md`
 Credentials, saved datasets, and reports all live inside this same folder (`.env`, `data/`, `reports/`) —
 wherever you install it is where its data stays.
 
+`.claude/` is a dot-directory, hidden by default in Finder/Explorer, so the skill's own files (and the
+datasets it collects) can be easy to lose track of after install. The first `npm install` creates a
+symlink — `buzzlens/` right next to `.claude/` at whichever level `.claude/skills/buzzlens` sits — pointing
+back at the real install. It's the same files, not a copy, so it's always current with zero extra syncing:
+open `buzzlens/` in Finder/Explorer and you're looking straight into `.claude/skills/buzzlens`, datasets and
+all. The real, working install (and the one Claude Code reads) stays at `.claude/skills/buzzlens`; the
+symlink is just a visible door into it, so deleting or moving the symlink itself doesn't affect the skill.
+
 ### Other Coding Agents
 
 Agents such as Codex, Kimi Code, OpenCode, Gemini CLI, or other local coding assistants with filesystem and

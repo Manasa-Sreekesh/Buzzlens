@@ -10,6 +10,7 @@ const fs = require('fs');
 const { loadEnv } = require('../lib/config/env');
 const { getDataset } = require('../lib/storage/manifest');
 const { summaryFilePath } = require('../lib/summaryFile');
+const { ensureVisibleLink } = require('../lib/utils/visibleLink');
 const logger = require('../lib/utils/logger');
 
 function parseArgs(argv) {
@@ -38,6 +39,7 @@ function fail(message) {
 
 async function main() {
   loadEnv();
+  ensureVisibleLink();
   const opts = parseArgs(process.argv.slice(2));
   const datasetId = opts._[0];
   if (!datasetId) return fail('Usage: node scripts/save-summary.js <datasetId> --text "..." (or --file <path>)');
