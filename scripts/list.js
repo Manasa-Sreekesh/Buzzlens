@@ -4,7 +4,7 @@
 
 const { loadEnv } = require('../lib/config/env');
 const { listDatasets } = require('../lib/storage/manifest');
-const { readSavedSummary } = require('../lib/summaryFile');
+const { readSavedInsights } = require('../lib/insightsFile');
 
 loadEnv();
 const datasets = listDatasets();
@@ -13,7 +13,8 @@ if (!datasets.length) {
   console.log('No saved datasets yet. Run "node scripts/search.js --topic ... --sources ..." first.');
 } else {
   for (const d of datasets) {
-    const hasSummary = readSavedSummary(d) !== null;
-    console.log(`${d.id}  "${d.topic}"  ${d.createdAt}  ${d.counts.total} items  ${hasSummary ? '[has summary]' : '[no summary yet]'}`);
+    const hasInsights = readSavedInsights(d) !== null;
+    const focus = d.analysisTopic ? ` (focus: "${d.analysisTopic}")` : '';
+    console.log(`${d.id}  "${d.topic}"${focus}  ${d.createdAt}  ${d.counts.total} items  ${hasInsights ? '[has PM insights]' : '[no insights yet]'}`);
   }
 }

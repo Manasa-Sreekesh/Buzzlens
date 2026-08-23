@@ -12,6 +12,7 @@ const { loadEnv } = require('../lib/config/env');
 const { getDataset } = require('../lib/storage/manifest');
 const { loadDatasetItems } = require('../lib/storage/datasetReader');
 const { readSavedSummary } = require('../lib/summaryFile');
+const { readSavedInsights } = require('../lib/insightsFile');
 const { buildReport } = require('../lib/analysis/buildReport');
 const logger = require('../lib/utils/logger');
 
@@ -32,7 +33,8 @@ async function main() {
 
   const items = await loadDatasetItems(entry);
   const savedSummary = readSavedSummary(entry);
-  const report = buildReport({ manifestEntry: entry, items, savedSummary });
+  const savedInsights = readSavedInsights(entry);
+  const report = buildReport({ manifestEntry: entry, items, savedSummary, savedInsights });
   const datasets = [{ manifestEntry: entry, items }];
 
   if (isStatic) {

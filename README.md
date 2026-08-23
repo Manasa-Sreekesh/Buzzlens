@@ -1,6 +1,6 @@
 # BuzzLens
 
-test 3 - A coding-agent skill for real user-generated-content (UGC) research. It is packaged as a self-contained
+A coding-agent skill for real user-generated-content (UGC) research. It is packaged as a self-contained
 folder, and the core `SKILL.md` can be read by Claude Code or any other coding agent with filesystem and
 shell access.
 
@@ -21,8 +21,10 @@ to the agent to read and write the analysis.
   package and nothing to set up for that part.
 - **Grounded Clustering** — local, deterministic sentiment and theme clustering (like/dislike/feature-request)
   with distinct-user counts, not just comment counts.
-- **Local Dashboard** — sentiment split, clusters, quotes, and the agent's saved analysis, viewable as a live
-  local server or exported to a single static HTML file.
+- **PM-Focused Local Dashboard** — a 6-section dashboard (overview, top topics, pain points, what users
+  love, user requests, and evidence-backed PM recommendations) built from the agent's own reading of the
+  comments, every card traceable back to a real comment. Viewable as a live local server or exported to a
+  single static HTML file.
 - **Fully Self-Contained** — no dependency on anything outside this folder. Clone it and use it — nowhere
   else to look. The agent installs its own small dependency set automatically the first time it runs.
 
@@ -100,7 +102,7 @@ Every source needs *your own* credentials — get them from the official provide
 
 | Source | Required? | Get it from |
 |---|---|---|
-| YouTube | Yes, to collect YouTube comments | [console.cloud.google.com](https://console.cloud.google.com) → enable "YouTube Data API v3" → Credentials → Create API Key |
+| YouTube | No (falls back to public pages), but **required for precise comment citations** — see below | [console.cloud.google.com](https://console.cloud.google.com) → enable "YouTube Data API v3" → Credentials → Create API Key |
 | Reddit | No (uses public read-only endpoints by default) | Optional, for higher rate limits: [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) → create a "script" app |
 | Twitter / X | Yes, to collect tweets | [developer.twitter.com](https://developer.twitter.com/en/portal/dashboard). **Recent-search requires a paid X API tier** — the free tier doesn't include search. If your token doesn't have access, `search.js` reports that clearly and skips Twitter/X rather than faking data. |
 | Community site | No — just the URL(s) you want scraped | Nothing to sign up for. Pass `--community-urls` with one or more page URLs (a forum thread, review page, blog post with comments, etc.). |
@@ -114,10 +116,12 @@ committed; keys are only ever sent to their own official API.
 ```bash
 node scripts/search.js --topic "Galaxy AI" --sources youtube,reddit               # defaults to the last 30 days
 node scripts/search.js --topic "Galaxy AI" --sources youtube,reddit --time 7days  # or --time 15days
+node scripts/search.js --topic "Siri AI" --sources youtube --analysis-topic "on-screen awareness"  # search broad, analyze narrow
 node scripts/search.js --topic "Product X" --sources community --community-urls "https://forum.example.com/thread/1,https://reviews.example.com/product-x"
 node scripts/search.js --topic "Product X" --sources youtube --video-urls "https://youtu.be/abc123XYZ89"
 node scripts/search.js --topic "Product X" --sources youtube --video-file youtube-videos.txt
-node scripts/save-summary.js <datasetId> --text "..."      # or --file <path>
+node scripts/save-summary.js <datasetId> --insights <path-to-insights.json>  # drives the PM dashboard
+node scripts/save-summary.js <datasetId> --text "..."      # optional plain-text copy, not shown on the dashboard
 node scripts/dashboard.js <datasetId>                        # or --static for a single HTML file
 node scripts/list.js                                         # see saved datasets
 ```
@@ -134,6 +138,22 @@ search, Reddit, Twitter/X); `community` and an explicit YouTube `--video-urls`/`
 fetch their exact targets regardless of `--time`. Twitter/X's recent-search API only covers roughly the last
 7 days regardless of what's requested — a platform limitation `search.js` reports rather than silently
 under-delivering.
+
+### Searching broad, analyzing narrow
+
+`--analysis-topic` lets you search under a broad topic (more data) while keeping the analysis and dashboard
+focused on one specific angle within it:
+
+```bash
+node scripts/search.js --topic "Siri AI" --sources youtube --analysis-topic "on-screen awareness"
+```
+
+Collection is unaffected — `--topic` still drives what gets searched/collected. `--analysis-topic` is
+carried on the saved dataset and shown on the dashboard (e.g. "On-screen Awareness, searched under 'Siri
+AI'"), and it's what the agent's Phase 2/3 analysis is instructed to center on: every dashboard section
+should focus on comments relevant to that angle, and say so honestly if only a few items are directly
+on-topic rather than diluting the analysis with unrelated ones. Omit it and the analysis simply covers
+everything found under `--topic`, as before.
 
 ### Community site source
 
@@ -180,9 +200,9 @@ reads first, and each phase hands off to one script:
 |---|---|---|
 | 0. Setup | *(automatic)* | The agent installs the small local dependency set on first run — nothing you configure |
 | 1. Collect | `scripts/search.js` | Fetches real comments/posts from the chosen sources, clusters and prints them |
-| 2. Analyze | *(the agent itself)* | Reads the printed data and writes the grounded analysis — no script, no LLM call |
-| 3. Save | `scripts/save-summary.js` | Attaches the agent's written analysis to the saved dataset |
-| 4. Dashboard (optional) | `scripts/dashboard.js` | Opens a local visual dashboard, or exports one static HTML file |
+| 2. Analyze | *(the agent itself)* | Reads the printed data and writes a grounded, id-referenced PM insights JSON — no script, no LLM call |
+| 3. Save | `scripts/save-summary.js` | Validates every id in the insights JSON against the real dataset, then attaches it to the saved dataset |
+| 4. Dashboard (optional) | `scripts/dashboard.js` | Opens the 6-section PM dashboard, or exports one static HTML file |
 | — | `scripts/list.js` | Lists previously saved datasets, so topics aren't recollected needlessly |
 
 ```
@@ -191,7 +211,11 @@ scripts/               entry points: search.js, save-summary.js, list.js, dashbo
 lib/
   collectors/           youtube.js, reddit.js, twitter.js, community.js — real data only, never mock on failure
   storage/               Excel + manifest read/write
-  analysis/               local, deterministic clustering/stats (localAnalysis.js) + report builder
+  analysis/               local, deterministic clustering/stats (localAnalysis.js), the PM dashboard builder
+                           (pmDashboard.js, with a heuristic fallback when no agent insights are saved yet),
+                           and the report builder
+  insightsFile.js        reads/validates/writes the agent's saved PM insights JSON (id-checked against the dataset)
+  summaryFile.js          reads/writes an optional plain-text narrative copy (not shown on the dashboard)
   dashboard/               local server + static generator + HTML template
   credentials.js          non-interactive credential checking
   config/, utils/          paths, env loading, small helpers
@@ -206,8 +230,9 @@ so adding a new source doesn't require touching anything else.
 data/
   manifest.json          # index of every saved dataset
   datasets/
-    <topic>_<timestamp>.xlsx        # one file per research run
-    <topic>_<timestamp>.summary.md  # the saved analysis, once one has been written
+    <topic>_<timestamp>.xlsx          # one file per research run
+    <topic>_<timestamp>.insights.json # the agent's saved PM insights, drives the dashboard, once written
+    <topic>_<timestamp>.summary.md    # optional plain-text narrative copy, if saved with --text/--file
 reports/
   <topic>_<timestamp>.html     # static dashboard exports
 ```
@@ -230,6 +255,7 @@ This skill was born from the belief that:
 ## Known limitations
 
 - Twitter/X recent-search requires a paid X API tier — a platform limitation, not something this skill can work around.
+- YouTube comments collected without `YOUTUBE_API_KEY` can only be cited at the video level, not the specific comment — YouTube's public pages don't expose a stable per-comment id. The dashboard labels these links "watch video" rather than falsely claiming a comment-level citation. Add the key to get real per-comment citation links (`?v=<video>&lc=<commentId>`).
 - Reddit's default (no-credential) access is subject to stricter, unauthenticated rate limits; add `REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET` in `.env` for higher limits.
 - The community-site collector only parses static, server-rendered HTML — it does not run JavaScript. Comments that only appear after client-side rendering (some Disqus/Discourse embeds, for example) won't be visible to it; that page will report 0 comments rather than something incorrect.
 - Comment auto-detection is a best-effort heuristic across arbitrary site markup — it won't fit every site. Use the `--comment-selector`/`--text-selector`/`--author-selector`/`--date-selector` overrides for sites it misses.

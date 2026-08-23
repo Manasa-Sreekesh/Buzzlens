@@ -6,6 +6,7 @@
 // Usage:
 //   node scripts/search.js --topic "Galaxy AI" --sources youtube,reddit                  # defaults to --time 30days
 //   node scripts/search.js --topic "Galaxy AI" --sources youtube,reddit --time 7days      # or 15days
+//   node scripts/search.js --topic "Siri AI" --sources youtube --analysis-topic "on-screen awareness"  # search broad, analyze narrow
 //   node scripts/search.js --topic "X" --sources youtube --keywords "AI,camera" --time custom --start 2026-01-01 --end 2026-02-01
 //   node scripts/search.js --topic "Product X" --sources community --community-urls "https://forum.example.com/thread/1,https://reviews.example.com/product-x"
 //   node scripts/search.js --topic "Product X" --sources community --community-urls "https://weird-site.example.com" --comment-selector ".weird-thing" --text-selector ".say" --author-selector ".who"
@@ -72,6 +73,9 @@ function printSummary(entry, report) {
       ? `${entry.customStart} to ${entry.customEnd}`
       : TIME_PERIOD_LABELS[entry.timePeriod] || entry.timePeriod;
   logger.step(`Topic: ${entry.topic} | Window: ${entryTimeLabel} | Total items: ${stats.totalItems} | Sources: ${entry.sourcesSucceeded.join(', ') || 'none'}`);
+  if (entry.analysisTopic) {
+    logger.step(`Analysis focus: "${entry.analysisTopic}" — searched broadly under "${entry.topic}", but the Phase 2/3 insights (and the dashboard) should focus specifically on this angle. If only a few items are directly on-topic, say so rather than diluting the analysis with unrelated items.`);
+  }
   if (entry.sourcesFailed.length) {
     for (const f of entry.sourcesFailed) logger.warn(`  Skipped ${f.source}: ${f.reason}`);
   }
@@ -99,10 +103,9 @@ function printSummary(entry, report) {
   }
 
   console.log(
-    `\nNext: write your own analysis from the data above (or open ${entry.filepath} for the full set), ` +
-      `covering sentiment, what people like/dislike, recommendations (with user counts), and representative ` +
-      `quotes. Then save it with:\n` +
-      `  node scripts/save-summary.js ${entry.id} --text "..."\n` +
+    `\nNext: read the data above (or open ${entry.filepath} for the full set) and write a PM insights JSON` +
+      `${entry.analysisTopic ? ` focused on "${entry.analysisTopic}"` : ''} — see SKILL.md Phase 2 for the schema. Then save it with:\n` +
+      `  node scripts/save-summary.js ${entry.id} --insights <path-to-insights.json>\n` +
       `Then view it with:\n` +
       `  node scripts/dashboard.js ${entry.id}`
   );
@@ -115,6 +118,13 @@ async function main() {
 
   const topic = String(opts.topic || '').trim();
   if (!topic) return fail('--topic is required, e.g. --topic "Galaxy AI"');
+
+  // Optional: search can stay broad (more data) while the analysis in Phase
+  // 2/3 focuses narrowly on one angle within it — e.g. search "Siri AI" but
+  // analyze specifically for "on-screen awareness" mentions. Doesn't affect
+  // what gets collected; it's carried on the dataset and shown on the
+  // dashboard so the analysis/insights stay scoped to it.
+  const analysisTopic = String(opts['analysis-topic'] || '').trim() || null;
 
   const validIds = listCollectors().map((c) => c.id);
   const sources = parseListArg(opts.sources).map((s) => s.toLowerCase());
@@ -190,6 +200,7 @@ async function main() {
 
   const query = {
     topic,
+    analysisTopic,
     keywords: parseListArg(opts.keywords),
     timePeriod,
     customStart: opts.start,

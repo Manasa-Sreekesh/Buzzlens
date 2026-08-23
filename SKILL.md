@@ -33,13 +33,23 @@ Before running anything, ask the user (skip a question only if they've already a
    credential in `.env`. Ask whether to proceed via the API (check/collect the credential — see "If a
    source is skipped" below) or go another way instead — e.g. pointing at specific community URLs (the
    `community` source) if they'd rather not set up API access.
+   **For YouTube specifically, recommend the API path** (`YOUTUBE_API_KEY`) over the no-key fallback
+   whenever the user cares about citing exact comments (the dashboard's "cite" links, not just a video
+   link) — the no-key fallback cannot produce a real per-comment citation at all, only a link to the video.
+   Every other source (Reddit, Twitter/X, community) already gives a genuine per-item link regardless of
+   credentials, so this trade-off is YouTube-specific. See "Citing comments precisely" below.
 4. **If YouTube is one of the sources: search by topic, or check specific videos?** — BuzzLens can either
    search YouTube for the topic (the default), or, if the user already knows which videos they want checked,
    collect comments from exactly those videos instead (see "YouTube: checking specific videos" below). If
    they want specific videos, ask how they'll provide the list: pasted directly in chat, or via the local
    `youtube-videos.txt` file — **one or the other, not both, in a single run.**
+5. **Is there a narrower angle within the topic the analysis should focus on?** — optional; skip asking if
+   the topic is already specific. If the user wants to search broadly (more data) but have the insights
+   focus on one particular feature/angle within it (e.g. search "Siri AI" but analyze specifically for
+   "on-screen awareness" mentions), that's `--analysis-topic` (see below) — it doesn't change what gets
+   collected, only what Phase 2/3's analysis and the dashboard focus on.
 
-Once you have the topic, sources, and (if relevant) URLs or credential decisions, run:
+Once you have the topic, sources, and (if relevant) URLs, analysis focus, or credential decisions, run:
 
 ```
 node scripts/search.js --topic "<topic>" --sources youtube,reddit
@@ -47,6 +57,9 @@ node scripts/search.js --topic "<topic>" --sources youtube,reddit
 
 - `--topic` — the company, product, or feature to research (required). Not a person.
 - `--sources` — comma-separated: `youtube`, `reddit`, `twitter`, `community` (required) — from what the user chose above.
+- `--analysis-topic` — optional, a narrower angle within `--topic` to focus the analysis on (e.g.
+  `--topic "Siri AI" --analysis-topic "on-screen awareness"`). Collection is unaffected — this only carries
+  through to the dataset and dashboard so Phase 2/3 knows what to focus on (see Phase 2 below).
 - `--time` — `24hours` | `7days` | `15days` | `30days` | `custom` (**default `30days`**). Don't ask the user
   about this upfront — just tell them, once, that you're searching **the last 30 days** by default (the
   command's own output says this too, so you don't need to repeat it every run). If they want a narrower
@@ -117,7 +130,8 @@ printed.** For more than what's printed, the full dataset is in the Excel file a
 **YouTube and Reddit work without any credential** — both fall back to public, no-key collection (YouTube by
 reading public search/watch pages, Reddit via its public JSON endpoints) when no API key is configured. This
 fallback is lower-fidelity than the API path (YouTube: fewer comments per video, no reply threads,
-approximate dates; Reddit: can be blocked outright on some networks). Whenever a source ran through this
+approximate dates, **and no way to cite a specific comment — only the video, see "Citing comments
+precisely" below**; Reddit: can be blocked outright on some networks). Whenever a source ran through this
 fallback, the output says so inline next to that source's line — **carry that disclaimer into your Phase 2
 analysis** (a line like "collected without a YouTube API key, so counts here are a lower bound" is enough)
 rather than presenting the fallback data as equivalent to a full API collection.
@@ -128,27 +142,103 @@ where to add the missing credential — `.env` in this skill's own folder. If th
 chat, add it to `.env` yourself (create it from `.env.example` if missing) and re-run. Never fabricate data
 for a skipped or failed source.
 
+### Citing comments precisely
+
+Every collected item's `link` field is meant to point at the specific comment, not just the page it's on —
+that's what the dashboard's "cite this comment" links promise, and it's a real principle of this skill:
+**a citation that only proves "this is the right video/thread" and not "this is the right comment" isn't a
+real citation.**
+
+- **Reddit, Twitter/X, and community** always give a genuine per-item link (a Reddit permalink, a tweet
+  URL, or the community collector's best-effort in-page anchor) — no extra setup needed.
+- **YouTube via the API** (`YOUTUBE_API_KEY` set) gives a true per-comment deep-link
+  (`?v=<video>&lc=<commentId>`) for every comment, top-level or reply.
+- **YouTube without a key** (the public-page fallback) cannot produce this — YouTube's public pages don't
+  expose a stable per-comment id the fallback can use. Every link from that path is a video-level link
+  only. The dashboard already labels this honestly ("watch video" vs. "cite this comment") rather than
+  overclaiming — don't undo that in your own written analysis either; if you quote a fallback-collected
+  comment, say the link goes to the video, not the comment.
+
+If the user cares about precise citations for YouTube, that's a reason to prefer the API path in Phase 1
+question 3 above, not something to work around after the fact.
+
 ## Phase 2: Analyze
 
-Using the printed data, write a full analysis covering:
-- Overall sentiment, grounded in the reported split
-- What people like — cite real quotes from the positive clusters
-- What people don't like / pain points — cite real quotes from the negative clusters
-- Recommendations / feature requests, noting how many distinct users asked for each
-- Notable differences between sources, if any
-- What the data doesn't have enough evidence for — say so rather than guessing
+Read every item printed in Phase 1 (and, if you need more than what's printed, the full dataset in the
+reported Excel file) and write a **PM-focused insights JSON** — this is what drives the dashboard's 6
+sections in Phase 3/4. Read the actual comment text yourself; don't just reuse the generic `theme` labels
+from collection (`Design`, `Performance`, `General`, etc.) — those are a fast local heuristic for filtering,
+not real product topics. Name topics the way a PM would (e.g. `Camera`, `Battery`, `Charging`), based on
+what people actually wrote about.
 
-This full analysis is for saving to the dashboard (Phase 3) — do **not** post it in the chat response.
-No required format — write it the way you'd naturally explain findings.
+**If an `--analysis-topic` was set** (printed in Phase 1's output as "Analysis focus"), every section —
+`overview`, `topTopics`, `painPoints`, `loves`, `requests`, `recommendations` — should center on comments
+relevant to that specific angle, not the full breadth of what was collected under the broader search topic.
+If only a handful of items are directly on-topic, say so plainly (e.g. in `overview.topDiscussedTopic` or by
+keeping a section short) rather than padding it out with tangentially related comments — a small, honest
+insights set beats a padded one.
+
+Build one JSON object with this shape and save it to a temp file:
+
+```jsonc
+{
+  "overview": {
+    "topDiscussedTopic": "Camera",                                    // required, short
+    "biggestPainPoint": "Battery drains quickly while using the camera",  // required, specific — not just "Battery"
+    "mostRequestedImprovement": "Faster charging speed"               // required, specific
+  },
+  "topTopics": [
+    // The main product features/topics people discuss. "positive"/"negative" are item counts within this topic.
+    { "topic": "Camera", "mentions": 42, "positive": 30, "negative": 12, "itemIds": ["yt_abc123", "..."] }
+  ],
+  "painPoints": [
+    // Specific problems, not vague categories — "Battery drains quickly while using the camera",
+    // not just "Battery". mentions = distinct users who raised it.
+    { "description": "Battery drains quickly while using the camera", "mentions": 18, "representativeItemId": "yt_abc123", "itemIds": ["yt_abc123", "..."] }
+  ],
+  "loves": [
+    // Strongest positive themes — what should be preserved.
+    { "description": "Camera quality is a major step up from the previous model", "mentions": 25, "representativeItemId": "yt_xyz789", "itemIds": ["..."] }
+  ],
+  "requests": [
+    // Improvements/features users are explicitly asking for.
+    { "request": "Add a dedicated pro camera mode", "relatedTopic": "Camera", "mentions": 9, "representativeItemId": "yt_qqq111", "itemIds": ["..."] }
+  ],
+  "recommendations": [
+    // 3-5 of these. Evidence-backed, not assumptions — ground every "insight" in what's actually in itemIds.
+    {
+      "signal": "Multiple users report battery drain specifically while filming 4K video",
+      "insight": "The camera's power draw during video capture may exceed what the battery/thermal system was tuned for",
+      "action": "Investigate power profile during 4K recording; consider a battery-saver prompt during long video capture",
+      "itemIds": ["yt_abc123", "yt_def456"]
+    }
+  ]
+}
+```
+
+Rules, enforced on save (Phase 3 will reject the file and tell you exactly what's wrong if you violate these):
+- Every entry in `topTopics`, `painPoints`, `loves`, `requests`, and `recommendations` **must** include a
+  non-empty `itemIds` array of real item `id`s from this dataset (the `ID` column in the Excel file / the
+  `id` field in the printed items) — this is what makes every card on the dashboard traceable back to an
+  actual comment. Never invent an id or reuse one from a different dataset.
+- `representativeItemId`, where present, must also be a real id from this dataset.
+- All three `overview` fields are required, non-empty strings.
+- Don't fabricate a `recommendations` entry's `insight`/`action` beyond what the cited comments support —
+  say "not enough evidence" in the underlying section instead of stretching a conclusion.
 
 ## Phase 3: Save
 
 ```
-node scripts/save-summary.js <datasetId> --text "<your analysis>"
+node scripts/save-summary.js <datasetId> --insights <path-to-insights.json>
 ```
 
-`<datasetId>` is printed in Phase 1's output (e.g. `ds_abc123`). For long analyses, write to a temp file
-and use `--file <path>` instead of `--text`.
+`<datasetId>` is printed in Phase 1's output (e.g. `ds_abc123`). Write the JSON from Phase 2 to a temp file
+first, then pass its path with `--insights`. If it fails validation, the error names exactly which
+`itemIds`/fields are the problem — fix the file and re-run, don't drop the offending evidence and guess.
+
+Optionally, also save a free-text narrative alongside it (not shown on the dashboard, just a plain-text
+copy next to the dataset for your own reference) with `--text "..."` or `--file <path>` — either can be
+combined with `--insights` in the same call.
 
 ## Phase 4: Open the dashboard
 
@@ -159,11 +249,14 @@ as optional:
 node scripts/dashboard.js <datasetId>
 ```
 
-This starts a local server and opens the dashboard in the browser — sentiment split, the same
-clusters/quotes, your saved analysis, and a basic Q&A box (local keyword matching against the dataset, not
-you — don't rely on it for anything you can just answer directly). This is where the user reads the full
-analysis, not the chat. This command blocks the terminal on purpose (it keeps the server up for the Q&A
-box) — run it in the background rather than waiting on it.
+This starts a local server and opens a PM-focused dashboard in the browser with 6 sections: Overview,
+Top Topics/Features, Top Pain Points, What Users Love, User Requests/Suggestions, and PM Recommendations —
+each card links to the real supporting comments (video title, date, likes, and a direct source link) via a
+"View comments"/"View evidence" action. This is where the user reads the full analysis, not the chat. If
+Phase 3's insights weren't saved yet, the dashboard still renders using local heuristics only, with a banner
+saying so — always complete Phase 2/3 first so the dashboard shows your actual reading of the comments,
+not just theme buckets. This command blocks the terminal on purpose (it keeps the server up) — run it in
+the background rather than waiting on it.
 
 In the chat response itself, give only a brief stats summary — total items, sentiment split, per-source
 counts, that kind of thing (no quotes, no theme write-up) — then note that the dashboard has opened with
@@ -175,6 +268,9 @@ and share the generated file path instead.
 - Don't call any LLM API for this — you are the LLM. Nothing to configure.
 - Don't substitute made-up comments or stats if collection fails or returns little data — report what
   happened and, if useful, suggest different keywords or a longer time period and re-run.
+- Don't present a video-level link as if it cites a specific comment — see "Citing comments precisely"
+  above. If precise citation matters and the dataset was collected via YouTube's no-key fallback, say so
+  and offer to re-collect with `YOUTUBE_API_KEY` rather than letting the gap go unnoticed.
 - Don't assume any other project or tool needs to be present — this skill's `scripts/` and `lib/` are
   everything it needs.
 - Only point `--community-urls` at sites the user has permission to collect from — this collector doesn't
