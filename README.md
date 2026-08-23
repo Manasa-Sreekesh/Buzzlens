@@ -31,13 +31,13 @@ to the agent to read and write the analysis.
 ### A. As a Project Skill (available only in one project)
 
 ```bash
-git clone <this-repo-url> <your-project>/.claude/skills/buzzlens
+git clone https://github.com/Manasa-Sreekesh/Buzzlens.git <your-project>/.claude/skills/buzzlens
 ```
 
 ### B. As a Personal Skill (available in every project you open with Claude Code)
 
 ```bash
-git clone <this-repo-url> ~/.claude/skills/buzzlens
+git clone https://github.com/Manasa-Sreekesh/Buzzlens.git ~/.claude/skills/buzzlens
 ```
 
 Either way, Claude Code auto-discovers it — no further setup. Open Claude Code anywhere and ask it to
