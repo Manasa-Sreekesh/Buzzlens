@@ -28,13 +28,24 @@ to the agent to read and write the analysis.
 
 ## Installation
 
-### A. As a Project Skill (available only in one project)
+### A. Already have Claude Code open in the project? (fastest)
+
+Run this from your project root — in your regular terminal, or pasted straight into the Claude Code
+prompt with a `!` prefix to run it right there:
+
+```bash
+git clone https://github.com/Manasa-Sreekesh/Buzzlens.git .claude/skills/buzzlens
+```
+
+That's it — Claude Code picks it up automatically. Ask it to research a topic, or invoke `/buzzlens`.
+
+### B. As a Project Skill, from anywhere (available only in one project)
 
 ```bash
 git clone https://github.com/Manasa-Sreekesh/Buzzlens.git <your-project>/.claude/skills/buzzlens
 ```
 
-### B. As a Personal Skill (available in every project you open with Claude Code)
+### C. As a Personal Skill (available in every project you open with Claude Code)
 
 ```bash
 git clone https://github.com/Manasa-Sreekesh/Buzzlens.git ~/.claude/skills/buzzlens
