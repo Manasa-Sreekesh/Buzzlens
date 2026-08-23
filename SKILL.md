@@ -22,14 +22,26 @@ npm install
 (This installs a few small packages — `exceljs`, `express`, `open`, `dotenv`, `chalk`, `cheerio` — used for
 saving datasets, running the local dashboard, reading credentials, and parsing community-site HTML. Nothing else.)
 
-## Phase 1: Collect
+## Phase 1: Ask, then collect
+
+Before running anything, ask the user (skip a question only if they've already answered it in chat):
+
+1. **What's the research topic?** — required, and must be an actual research topic (a company, product, or
+   feature) — not a person, and not left blank. If what they give isn't one, ask again rather than guessing.
+2. **Which sources?** — give exactly three options: **YouTube**, **Reddit**, or **both**.
+3. **How should it proceed, based on those sources?** — YouTube and Reddit are both API-backed and need a
+   credential in `.env`. Ask whether to proceed via the API (check/collect the credential — see "If a
+   source is skipped" below) or go another way instead — e.g. pointing at specific community URLs (the
+   `community` source) if they'd rather not set up API access.
+
+Once you have the topic, sources, and (if relevant) URLs or credential decisions, run:
 
 ```
 node scripts/search.js --topic "<topic>" --sources youtube,reddit --time 7days
 ```
 
 - `--topic` — the company, product, or feature to research (required). Not a person.
-- `--sources` — comma-separated: `youtube`, `reddit`, `twitter`, `community` (required). Default to `youtube,reddit` unless the user specifically wants Twitter/X or names a specific community site.
+- `--sources` — comma-separated: `youtube`, `reddit`, `twitter`, `community` (required) — from what the user chose above.
 - `--time` — `24hours` | `7days` | `30days` | `custom` (default `7days`). For `custom`, also pass `--start YYYY-MM-DD --end YYYY-MM-DD`. Not used by `community` (it fetches the exact page(s) given, not a time-windowed search).
 - `--keywords` — optional comma-separated related keywords to narrow the search.
 
@@ -68,10 +80,19 @@ and quote traces back to an actual collected item. **Never invent statistics or 
 printed.** For more than what's printed, the full dataset is in the Excel file at the path reported
 (`data/datasets/<slug>_<timestamp>.xlsx`).
 
-**If a source is skipped**, the output says exactly why (usually a missing API key, or for `community`,
-zero comments auto-detected) and, for API-backed sources, where to add the missing credential — `.env` in
-this skill's own folder. If the user gives you a key in chat, add it to `.env` yourself (create it from
-`.env.example` if missing) and re-run. Never fabricate data for a skipped source.
+**YouTube and Reddit work without any credential** — both fall back to public, no-key collection (YouTube by
+reading public search/watch pages, Reddit via its public JSON endpoints) when no API key is configured. This
+fallback is lower-fidelity than the API path (YouTube: fewer comments per video, no reply threads,
+approximate dates; Reddit: can be blocked outright on some networks). Whenever a source ran through this
+fallback, the output says so inline next to that source's line — **carry that disclaimer into your Phase 2
+analysis** (a line like "collected without a YouTube API key, so counts here are a lower bound" is enough)
+rather than presenting the fallback data as equivalent to a full API collection.
+
+**If a source is skipped or fails outright**, the output says exactly why (a missing key for Twitter, a
+network block for Reddit, or for `community`, zero comments auto-detected) and, for API-backed sources,
+where to add the missing credential — `.env` in this skill's own folder. If the user gives you a key in
+chat, add it to `.env` yourself (create it from `.env.example` if missing) and re-run. Never fabricate data
+for a skipped or failed source.
 
 ## Phase 2: Analyze
 
