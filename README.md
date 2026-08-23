@@ -1,6 +1,6 @@
 # BuzzLens
 
-A coding-agent skill for real user-generated-content (UGC) research. It is packaged as a self-contained
+A coding-agent skill for real user-generated-content (UGC) and user feedback research. It is packaged as a self-contained
 folder, and the core `SKILL.md` can be read by Claude Code or any other coding agent with filesystem and
 shell access.
 
