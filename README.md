@@ -11,14 +11,6 @@ real comments, not guesses. It collects real YouTube, Reddit, and Twitter/X data
 community website (forum, review site, blog) you point it at, saves everything locally, and hands it back
 to the agent to read and write the analysis.
 
-```
-Agent runs: node scripts/search.js --topic "X" --sources youtube,reddit
-  → real comments/posts collected, saved locally, printed back to the agent
-Agent reads that data and writes the analysis, right there in the conversation
-Agent runs: node scripts/save-summary.js <id> --text "..."
-  → the agent's write-up is saved so it shows up in a local dashboard
-```
-
 ### Key Features
 
 - **Real Data Only** — every quote and count traces back to an actual collected comment. Nothing is
