@@ -1,0 +1,18 @@
+{
+  "name": "buzzlens-skill",
+  "version": "0.1.0",
+  "description": "A self-contained Claude Code skill: collects real user feedback (YouTube, Reddit, Twitter/X, and any community website you point it at) about a company, product, or feature, and saves it locally for an AI agent to analyze.",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "cheerio": "^1.2.0",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.19.2",
+    "open": "^8.4.2"
+  }
+}

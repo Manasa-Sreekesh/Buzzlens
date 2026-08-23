@@ -1,0 +1,14 @@
+node_modules/
+.env
+
+data/*
+!data/.gitkeep
+!data/datasets
+data/datasets/*
+!data/datasets/.gitkeep
+
+reports/*
+!reports/.gitkeep
+
+*.log
+.DS_Store
