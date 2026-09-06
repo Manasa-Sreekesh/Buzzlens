@@ -111,19 +111,31 @@ Copy `.env.example` to `.env` and fill in what you have, or just start using it 
 exactly what's missing and where to add it, the moment a source needs it. `.env` is gitignored and never
 committed; keys are only ever sent to their own official API.
 
+Check what's already saved there any time with:
+
+```bash
+node scripts/credentials.js
+```
+
+This prints every credential BuzzLens knows about, masked, and whether it's set — the agent runs this
+first in Phase 1 too, so it only asks you for keys that are actually missing instead of asking blind.
+
 ## Commands
 
 ```bash
-node scripts/search.js --topic "Galaxy AI" --sources youtube,reddit               # defaults to the last 30 days
+node scripts/search.js --topic "Galaxy AI"                                       # defaults to --sources youtube,reddit and the last 30 days
 node scripts/search.js --topic "Galaxy AI" --sources youtube,reddit --time 7days  # or --time 15days
 node scripts/search.js --topic "Siri AI" --sources youtube --analysis-topic "on-screen awareness"  # search broad, analyze narrow
 node scripts/search.js --topic "Product X" --sources community --community-urls "https://forum.example.com/thread/1,https://reviews.example.com/product-x"
-node scripts/search.js --topic "Product X" --sources youtube --video-urls "https://youtu.be/abc123XYZ89"
+node scripts/search.js --topic "Product X" --sources youtube --video-urls "https://youtu.be/abc123XYZ89"  # adds this video to the topic search, doesn't replace it
 node scripts/search.js --topic "Product X" --sources youtube --video-file youtube-videos.txt
+node scripts/search.js --topic "Product X" --sources youtube,twitter                                     # combined multi-source run, one dataset
+node scripts/search.js --topic "Product X" --sources twitter --tweet-urls "https://x.com/someuser/status/1234567890123456789"
 node scripts/save-summary.js <datasetId> --insights <path-to-insights.json>  # drives the PM dashboard
 node scripts/save-summary.js <datasetId> --text "..."      # optional plain-text copy, not shown on the dashboard
 node scripts/dashboard.js <datasetId>                        # or --static for a single HTML file
 node scripts/list.js                                         # see saved datasets
+node scripts/credentials.js                                  # see which API keys are already set in .env
 ```
 
 `search.js` never recollects a topic you already have — reuse a saved dataset's id with
@@ -175,11 +187,12 @@ are optional and resolve within that container. Comments with no resolvable auth
 #1`, `Anonymous #2`, etc. (unique per item — never a single shared label, so distinct-commenter counts stay
 meaningful) rather than guessing an identity.
 
-### Checking specific YouTube videos instead of a topic search
+### Adding specific YouTube videos to the topic search
 
-If you already know which YouTube videos you want checked, skip the topic search and point at them
-directly with `--video-urls` (comma-separated, typed inline) or `--video-file` (a local text file, one
-video URL or ID per line) — use one or the other, not both, in the same run:
+If you already know which YouTube videos you want checked, you don't have to choose between that and the
+topic search — both run together. Add up to **20 videos** on top of the search with `--video-urls`
+(comma-separated, typed inline) or `--video-file` (a local text file, one video URL or ID per line) — use
+one or the other, not both, in the same run:
 
 ```bash
 node scripts/search.js --topic "Product X" --sources youtube --video-urls "https://youtu.be/abc123XYZ89,def456UVW01"
@@ -188,8 +201,45 @@ node scripts/search.js --topic "Product X" --sources youtube --video-file youtub
 
 Copy `youtube-videos.example.txt` to `youtube-videos.txt` to keep a reusable list — accepted formats
 (watch URLs, `youtu.be` links, Shorts links, or bare 11-character video IDs) are documented in that file.
-`youtube-videos.txt` is gitignored, same as `.env`. Either flag skips the keyword search and the `--time`
-window for YouTube (an exact target list, not a time-windowed search) — same idea as `--community-urls`.
+`youtube-videos.txt` is gitignored, same as `.env`. If a listed video also shows up in the topic search
+results, it's collected once, not twice — `search.js` reports when that dedup happens. The `--time` window
+still applies to the topic-searched videos, but not to the explicitly listed ones (an exact target list,
+not a time-windowed search) — same idea as `--community-urls`.
+
+### Twitter/X: topic search, replies, and specific tweets
+
+`twitter` works like any other `--sources` value — use it alone for a Twitter/X-only run, or combine it
+with YouTube (or anything else) in one call:
+
+```bash
+node scripts/search.js --topic "Product X" --sources twitter
+node scripts/search.js --topic "Product X" --sources youtube,twitter
+```
+
+The topic search collects matching tweets **and** the replies underneath them, for a bounded number of the
+most-engaged tweets each run, so "buzz" on a topic includes the surrounding conversation, not just top-level
+posts. Add specific tweets on top of the search the same way YouTube videos work — up to **20 tweets** —
+with `--tweet-urls` or `--tweet-file` (never both in the same run):
+
+```bash
+node scripts/search.js --topic "Product X" --sources twitter --tweet-urls "https://x.com/someuser/status/1234567890123456789"
+node scripts/search.js --topic "Product X" --sources twitter --tweet-file tweets.txt
+```
+
+Copy `tweets.example.txt` to `tweets.txt` for a reusable list — accepted formats (twitter.com/x.com status
+URLs, or bare numeric tweet IDs) are documented in that file. `tweets.txt` is gitignored, same as `.env`.
+Same dedup behavior as YouTube: a listed tweet already found by the topic search is collected once, not
+twice, and `search.js` reports it.
+
+### Combined multi-source analysis
+
+Collecting from more than one source in a single run (e.g. `youtube,twitter`) produces one dataset covering
+both — the printed summary, the saved Excel file, and the AI agent's written analysis all treat it as one
+combined picture rather than two separate reports. The dashboard still lets you view it split apart:
+whenever a dataset mixes sources, a filter bar appears ("All sources" / "YouTube" / "Twitter/X" / …) that
+narrows every section down to just that source's evidence. The saved `.insights.json` file mirrors this —
+every entry carries a `sourceBreakdown` (e.g. `{"youtube": 5, "twitter": 2}`), computed automatically from
+the real data when you save it, so the file itself demarcates what came from where.
 
 ## Architecture
 
@@ -204,10 +254,11 @@ reads first, and each phase hands off to one script:
 | 3. Save | `scripts/save-summary.js` | Validates every id in the insights JSON against the real dataset, then attaches it to the saved dataset |
 | 4. Dashboard (optional) | `scripts/dashboard.js` | Opens the 6-section PM dashboard, or exports one static HTML file |
 | — | `scripts/list.js` | Lists previously saved datasets, so topics aren't recollected needlessly |
+| — | `scripts/credentials.js` | Shows which API keys are already set in `.env` (masked), checked before Phase 1 asks about them |
 
 ```
 SKILL.md              the skill definition Claude Code reads
-scripts/               entry points: search.js, save-summary.js, list.js, dashboard.js
+scripts/               entry points: search.js, save-summary.js, list.js, dashboard.js, credentials.js
 lib/
   collectors/           youtube.js, reddit.js, twitter.js, community.js — real data only, never mock on failure
   storage/               Excel + manifest read/write
@@ -237,7 +288,7 @@ reports/
   <topic>_<timestamp>.html     # static dashboard exports
 ```
 
-`data/`, `reports/`, `.env`, and `youtube-videos.txt` are all gitignored.
+`data/`, `reports/`, `.env`, `youtube-videos.txt`, and `tweets.txt` are all gitignored.
 
 ## Philosophy
 
@@ -255,6 +306,7 @@ This skill was born from the belief that:
 ## Known limitations
 
 - Twitter/X recent-search requires a paid X API tier — a platform limitation, not something this skill can work around.
+- Twitter/X reply collection ("comments under the posts") is bounded to a limited number of the most-engaged tweets per run, since each tweet's replies cost a separate API call — not every tweet collected gets its replies fetched.
 - YouTube comments collected without `YOUTUBE_API_KEY` can only be cited at the video level, not the specific comment — YouTube's public pages don't expose a stable per-comment id. The dashboard labels these links "watch video" rather than falsely claiming a comment-level citation. Add the key to get real per-comment citation links (`?v=<video>&lc=<commentId>`).
 - Reddit's default (no-credential) access is subject to stricter, unauthenticated rate limits; add `REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET` in `.env` for higher limits.
 - The community-site collector only parses static, server-rendered HTML — it does not run JavaScript. Comments that only appear after client-side rendering (some Disqus/Discourse embeds, for example) won't be visible to it; that page will report 0 comments rather than something incorrect.

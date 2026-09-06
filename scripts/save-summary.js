@@ -13,7 +13,7 @@ const { loadEnv } = require('../lib/config/env');
 const { getDataset } = require('../lib/storage/manifest');
 const { loadDatasetItems } = require('../lib/storage/datasetReader');
 const { summaryFilePath } = require('../lib/summaryFile');
-const { insightsFilePath, validateInsights } = require('../lib/insightsFile');
+const { insightsFilePath, validateInsights, attachSourceBreakdown } = require('../lib/insightsFile');
 const { ensureVisibleLink } = require('../lib/utils/visibleLink');
 const logger = require('../lib/utils/logger');
 
@@ -73,6 +73,7 @@ async function main() {
       return fail(`--insights failed validation (every card must trace back to real comment ids):\n  - ${errors.join('\n  - ')}`);
     }
 
+    attachSourceBreakdown(parsed, items);
     fs.writeFileSync(insightsFilePath(entry), JSON.stringify(parsed, null, 2), 'utf8');
     logger.success(`Saved PM dashboard insights for "${entry.topic}" (${entry.id}).`);
     savedSomething = true;

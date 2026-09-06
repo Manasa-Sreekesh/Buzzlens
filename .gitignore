@@ -1,6 +1,7 @@
 node_modules/
 .env
 youtube-videos.txt
+tweets.txt
 
 data/*
 !data/.gitkeep

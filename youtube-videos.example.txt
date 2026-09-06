@@ -1,6 +1,6 @@
 # Copy this file to youtube-videos.txt and list the specific YouTube videos
-# you want comments collected from — one video per line. youtube-videos.txt
-# is gitignored and never committed, same as .env.
+# you want comments collected from — one video per line, up to 20 videos.
+# youtube-videos.txt is gitignored and never committed, same as .env.
 #
 # Accepted formats (any mix is fine):
 #   https://www.youtube.com/watch?v=dQw4w9WgXcQ
@@ -13,10 +13,11 @@
 # Use this file with:
 #   node scripts/search.js --topic "<topic>" --sources youtube --video-file youtube-videos.txt
 #
-# This is an alternative to keyword search: --video-file (or --video-urls on
-# the command line) tells search.js to collect comments from exactly these
-# videos instead of searching YouTube for the topic. Use one or the other,
-# not both, in a single run.
+# These videos are collected IN ADDITION to the normal topic search, not
+# instead of it — --video-file (or --video-urls on the command line) adds
+# them on top of whatever search.js finds for --topic. If a video here also
+# turns up in the topic search results, it's only collected once. Use
+# --video-file or --video-urls, not both, in a single run.
 
 https://www.youtube.com/watch?v=dQw4w9WgXcQ
 https://youtu.be/dQw4w9WgXcQ

@@ -24,39 +24,61 @@ saving datasets, running the local dashboard, reading credentials, and parsing c
 
 ## Phase 1: Ask, then collect
 
-Before running anything, ask the user (skip a question only if they've already answered it in chat):
-
-1. **What's the research topic?** — required, and must be an actual research topic (a company, product, or
-   feature) — not a person, and not left blank. If what they give isn't one, ask again rather than guessing.
-2. **Which sources?** — give exactly three options: **YouTube**, **Reddit**, or **both**.
-3. **How should it proceed, based on those sources?** — YouTube and Reddit are both API-backed and need a
-   credential in `.env`. Ask whether to proceed via the API (check/collect the credential — see "If a
-   source is skipped" below) or go another way instead — e.g. pointing at specific community URLs (the
-   `community` source) if they'd rather not set up API access.
-   **For YouTube specifically, recommend the API path** (`YOUTUBE_API_KEY`) over the no-key fallback
-   whenever the user cares about citing exact comments (the dashboard's "cite" links, not just a video
-   link) — the no-key fallback cannot produce a real per-comment citation at all, only a link to the video.
-   Every other source (Reddit, Twitter/X, community) already gives a genuine per-item link regardless of
-   credentials, so this trade-off is YouTube-specific. See "Citing comments precisely" below.
-4. **If YouTube is one of the sources: search by topic, or check specific videos?** — BuzzLens can either
-   search YouTube for the topic (the default), or, if the user already knows which videos they want checked,
-   collect comments from exactly those videos instead (see "YouTube: checking specific videos" below). If
-   they want specific videos, ask how they'll provide the list: pasted directly in chat, or via the local
-   `youtube-videos.txt` file — **one or the other, not both, in a single run.**
-5. **Is there a narrower angle within the topic the analysis should focus on?** — optional; skip asking if
-   the topic is already specific. If the user wants to search broadly (more data) but have the insights
-   focus on one particular feature/angle within it (e.g. search "Siri AI" but analyze specifically for
-   "on-screen awareness" mentions), that's `--analysis-topic` (see below) — it doesn't change what gets
-   collected, only what Phase 2/3's analysis and the dashboard focus on.
-
-Once you have the topic, sources, and (if relevant) URLs, analysis focus, or credential decisions, run:
+**Before asking anything about credentials, check what's already configured:**
 
 ```
-node scripts/search.js --topic "<topic>" --sources youtube,reddit
+node scripts/credentials.js
+```
+
+This prints every credential BuzzLens knows about (masked) and whether it's set in `.env` — it never asks
+the user to retype something they've already saved there. Run this first, then only ask the user about
+credentials that come back `(not set)` and are relevant to the sources they want. If everything a source
+needs is already `✔`, don't ask about it at all — just proceed. `.env` (copy `.env.example` to start one)
+is the one local, gitignored file every API key lives in; it's never sent anywhere except each key's own
+official API.
+
+**Ask the user exactly one question up front — the research topic — and nothing else:**
+
+> What do you want to research?
+
+Keep it a plain, open question. Don't suggest example topics, don't guess one for them, and don't turn it
+into a multiple-choice pick. It's required, and must be an actual research topic (a company, product, or
+feature) — not a person, and not left blank. If what they give isn't one, ask again (still just the topic,
+not a menu of options) rather than guessing.
+
+Skip asking it at all if they've already stated a topic in chat. Everything below this point is handled
+with sensible defaults or by reading the user's own wording — **do not turn any of it into an upfront
+question**:
+
+- **Sources** default to `youtube,reddit` (see `--sources` below) unless the user's own request already
+  names something else — they said "check Twitter", they pasted a forum/review URL (→ `community`), or they
+  said "just YouTube"/"just Reddit". Both defaults work with no credential via their public fallback, so
+  there's nothing to block on.
+- **Credentials**: already checked above via `scripts/credentials.js`. If something relevant is missing,
+  don't stop to ask — just collect via the fallback (its inline disclaimer covers the trade-off) and, once
+  results are back, mention in passing that adding e.g. `YOUTUBE_API_KEY` would improve fidelity/citations.
+  Only ask for a credential proactively if the user brings it up, or if a source can't run at all without
+  one (Twitter/X — see "If a source is skipped" below).
+- **Specific YouTube videos or tweets**: don't ask whether the user has any. If they mention or paste video
+  links or tweet links — now or later — collect those alongside the topic search rather than instead of it
+  (see "YouTube: adding specific videos to the topic search" and "Twitter/X: topic search, replies, and
+  specific tweets" below); up to **20** per run for each, pasted directly or via `youtube-videos.txt` /
+  `tweets.txt`.
+- **Analysis focus** (`--analysis-topic`): only set it if the user's own phrasing already implies a
+  narrower angle within a broader ask (e.g. "search Siri AI but I really care about on-screen awareness").
+  Don't ask for one.
+- **Time window**: stays the documented default (`30days`) — mention it once, in the result, never as an
+  upfront question.
+
+Once you have the topic (and anything else the user's own message already specified), run:
+
+```
+node scripts/search.js --topic "<topic>"
 ```
 
 - `--topic` — the company, product, or feature to research (required). Not a person.
-- `--sources` — comma-separated: `youtube`, `reddit`, `twitter`, `community` (required) — from what the user chose above.
+- `--sources` — comma-separated: `youtube`, `reddit`, `twitter`, `community`. Optional — defaults to
+  `youtube,reddit` when omitted, per the guidance above.
 - `--analysis-topic` — optional, a narrower angle within `--topic` to focus the analysis on (e.g.
   `--topic "Siri AI" --analysis-topic "on-screen awareness"`). Collection is unaffected — this only carries
   through to the dataset and dashboard so Phase 2/3 knows what to focus on (see Phase 2 below).
@@ -93,11 +115,11 @@ view or by fetching the page yourself first.) Comments with no resolvable author
 distinct-user counts below stay meaningful. This collector only reads static, server-rendered HTML — pages
 that render comments purely via JavaScript (some embedded widgets) won't be visible to it.
 
-### YouTube: checking specific videos instead of a topic search
+### YouTube: adding specific videos to the topic search
 
-If the user already has particular YouTube videos in mind (rather than wanting BuzzLens to search by
-topic), collect from exactly those videos with `--video-urls` or `--video-file` — never both in the same
-run:
+If the user already has particular YouTube videos in mind, they don't have to choose between that and the
+topic search — both run **together** in the same call, via `--video-urls` or `--video-file` (never both in
+the same run):
 
 ```
 node scripts/search.js --topic "<topic>" --sources youtube --video-urls "https://youtu.be/abc123XYZ89,https://www.youtube.com/watch?v=def456UVW01"
@@ -105,15 +127,23 @@ node scripts/search.js --topic "<topic>" --sources youtube --video-file youtube-
 ```
 
 - `--video-urls` — comma-separated, pasted directly by the user in chat. Accepts full watch/`youtu.be`/
-  shorts URLs or bare 11-character video IDs, any mix.
+  shorts URLs or bare 11-character video IDs, any mix. **Up to 20 videos per run.**
 - `--video-file` — path to a local text file, one video URL or ID per line (`#`-prefixed and blank lines
   ignored). `youtube-videos.example.txt` in this skill's folder is the template — if the user wants to keep
   a reusable list, have them (or you, on their instruction) copy it to `youtube-videos.txt` and edit it;
   that file is gitignored, same as `.env`, so it never leaves their machine.
-- Either flag requires `--sources` to include `youtube`. Using either skips the topic/keyword search
-  entirely for YouTube — comments are collected straight from the named videos — and `--time` does not
-  apply to this source in that mode (mirrors how `--community-urls` behaves: an exact target list, not a
-  time-windowed search). Reddit/other sources in the same run are unaffected and still use `--time` normally.
+- Either flag requires `--sources` to include `youtube`. The topic search still runs as normal — these
+  flags add the named videos **on top of** the search results, they don't replace them.
+- If more than 20 unique videos are given, only the first 20 are used and `search.js` says so in its
+  output — mention that truncation to the user rather than letting it pass silently.
+- **Deduplication**: if a listed video also turns up in the topic search results, it's fetched once, not
+  twice — `search.js`'s output says so when it happens (e.g. "1 listed video(s) were already found by the
+  topic search — collected once, not twice"), so you know the overlap was handled rather than silently
+  dropped or double-counted.
+- The `--time` window still applies to the topic-searched videos as normal, but not to the explicitly
+  listed ones — comments from a listed video are collected regardless of date (mirrors how
+  `--community-urls` behaves: an exact target list, not a time-windowed search). Reddit/other sources in the
+  same run are unaffected either way.
 - An unrecognized entry (not a valid YouTube URL/ID) fails the whole command with exactly which entry(ies)
   were bad, so the user can fix the list rather than silently skipping it.
 
@@ -159,8 +189,60 @@ real citation.**
   overclaiming — don't undo that in your own written analysis either; if you quote a fallback-collected
   comment, say the link goes to the video, not the comment.
 
-If the user cares about precise citations for YouTube, that's a reason to prefer the API path in Phase 1
-question 3 above, not something to work around after the fact.
+If the user cares about precise citations for YouTube, that's a reason to mention the API path (add
+`YOUTUBE_API_KEY`) once results are back, not something to work around after the fact.
+
+### Twitter/X: topic search, replies, and specific tweets
+
+`twitter` is a normal `--sources` value like any other — pick it alone (`--sources twitter`) for a
+Twitter/X-only run, or combine it with YouTube or any other source in the same call
+(`--sources youtube,twitter`) for one run that covers both. It needs `TWITTER_BEARER_TOKEN` in `.env`
+(a paid X API tier — see "If a source is skipped" below); without it, `twitter` is skipped with a clear
+reason, never faked.
+
+```
+node scripts/search.js --topic "<topic>" --sources twitter
+node scripts/search.js --topic "<topic>" --sources youtube,twitter
+```
+
+- The topic search collects matching tweets **and** the replies underneath them ("comments under the
+  posts") for a bounded number of the most-engaged tweets each run — both land in the same dataset as
+  ordinary items (a reply's `contentTitle` says "Reply to a tweet by @user" so it's identifiable in the
+  data, and it still carries its own genuine per-tweet link).
+- **Specific tweets**: same idea as YouTube's specific videos — add them on top of the topic search with
+  `--tweet-urls` or `--tweet-file` (never both in the same run), **up to 20 tweets per run**:
+
+  ```
+  node scripts/search.js --topic "<topic>" --sources twitter --tweet-urls "https://x.com/user/status/1234567890123456789"
+  node scripts/search.js --topic "<topic>" --sources twitter --tweet-file tweets.txt
+  ```
+
+  `--tweet-urls` accepts full `twitter.com`/`x.com` status URLs or bare numeric tweet IDs, any mix.
+  `--tweet-file` is a local text file, one tweet URL or ID per line (`#`-prefixed and blank lines
+  ignored) — `tweets.example.txt` in this skill's folder is the template; copy it to `tweets.txt` for a
+  reusable list (gitignored, same as `.env`/`youtube-videos.txt`). Either flag requires `--sources` to
+  include `twitter`. If a listed tweet also turns up in the topic search, it's collected once, not twice —
+  `search.js`'s output says so when it happens, same as the YouTube video-list dedup.
+- Twitter/X's recent-search window (~7 days) still applies as documented below — this governs both the
+  topic search and the reply-fetching, though not the explicit tweet lookup itself (an exact target list).
+
+### Combined multi-source analysis, and viewing it separately
+
+When a run collects from more than one source (e.g. `--sources youtube,twitter`), everything downstream —
+the printed summary, the saved dataset, and your Phase 2 analysis — covers **all** of it together: read
+every item regardless of source when writing the insights JSON, and let topics/pain points/requests draw
+on both YouTube comments and Twitter posts/replies where the evidence supports it. Don't write two separate
+analyses or silently favor one source.
+
+The dashboard still lets the user view sources separately without a second collection run: whenever a
+dataset has more than one source, it shows a filter bar ("All sources" / "YouTube" / "Twitter/X" / …) that
+narrows every section — topics, pain points, loves, requests, recommendations, and the overview stats — down
+to just that source's evidence, computed from each item's real `source` field. You don't need to do
+anything for this to work; it's automatic once the dataset has more than one source. This is also why the
+saved `.insights.json` file itself demarcates the mix: every entry gets a `sourceBreakdown` field (e.g.
+`{"youtube": 5, "twitter": 2}`), and `overview.sourceBreakdown` covers the whole dataset — computed and
+attached automatically when you run `save-summary.js`, from the real items, never something you need to
+author yourself in the Phase 2 JSON.
 
 ## Phase 2: Analyze
 
@@ -225,6 +307,8 @@ Rules, enforced on save (Phase 3 will reject the file and tell you exactly what'
 - All three `overview` fields are required, non-empty strings.
 - Don't fabricate a `recommendations` entry's `insight`/`action` beyond what the cited comments support —
   say "not enough evidence" in the underlying section instead of stretching a conclusion.
+- Don't add a `sourceBreakdown` field yourself — Phase 3 computes and attaches it automatically (per entry
+  and on `overview`) from each `itemIds` entry's real `source`, so it can't drift from the actual data.
 
 ## Phase 3: Save
 
@@ -252,11 +336,13 @@ node scripts/dashboard.js <datasetId>
 This starts a local server and opens a PM-focused dashboard in the browser with 6 sections: Overview,
 Top Topics/Features, Top Pain Points, What Users Love, User Requests/Suggestions, and PM Recommendations —
 each card links to the real supporting comments (video title, date, likes, and a direct source link) via a
-"View comments"/"View evidence" action. This is where the user reads the full analysis, not the chat. If
-Phase 3's insights weren't saved yet, the dashboard still renders using local heuristics only, with a banner
-saying so — always complete Phase 2/3 first so the dashboard shows your actual reading of the comments,
-not just theme buckets. This command blocks the terminal on purpose (it keeps the server up) — run it in
-the background rather than waiting on it.
+"View comments"/"View evidence" action. When the dataset mixes more than one source, a filter bar at the top
+lets the user switch between "All sources" and each individual source (see "Combined multi-source analysis"
+above) — no extra step needed from you for this to appear. This is where the user reads the full analysis,
+not the chat. If Phase 3's insights weren't saved yet, the dashboard still renders using local heuristics
+only, with a banner saying so — always complete Phase 2/3 first so the dashboard shows your actual reading
+of the comments, not just theme buckets. This command blocks the terminal on purpose (it keeps the server
+up) — run it in the background rather than waiting on it.
 
 In the chat response itself, give only a brief stats summary — total items, sentiment split, per-source
 counts, that kind of thing (no quotes, no theme write-up) — then note that the dashboard has opened with

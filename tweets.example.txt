@@ -1,0 +1,21 @@
+# Copy this file to tweets.txt and list the specific tweets you want
+# collected from — one tweet per line, up to 20 tweets. tweets.txt is
+# gitignored and never committed, same as .env.
+#
+# Accepted formats (any mix is fine):
+#   https://twitter.com/someuser/status/1234567890123456789
+#   https://x.com/someuser/status/1234567890123456789
+#   1234567890123456789              (bare tweet ID)
+#
+# Blank lines and lines starting with # are ignored.
+#
+# Use this file with:
+#   node scripts/search.js --topic "<topic>" --sources twitter --tweet-file tweets.txt
+#
+# These tweets are collected IN ADDITION to the normal topic search, not
+# instead of it — --tweet-file (or --tweet-urls on the command line) adds
+# them on top of whatever search.js finds for --topic. If a tweet here also
+# turns up in the topic search results, it's only collected once. Use
+# --tweet-file or --tweet-urls, not both, in a single run.
+
+https://twitter.com/someuser/status/1234567890123456789

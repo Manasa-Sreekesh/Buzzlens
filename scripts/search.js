@@ -4,7 +4,7 @@
 // falls back to fake data. See ../SKILL.md for the full workflow.
 //
 // Usage:
-//   node scripts/search.js --topic "Galaxy AI" --sources youtube,reddit                  # defaults to --time 30days
+//   node scripts/search.js --topic "Galaxy AI"                                           # defaults to --sources youtube,reddit and --time 30days
 //   node scripts/search.js --topic "Galaxy AI" --sources youtube,reddit --time 7days      # or 15days
 //   node scripts/search.js --topic "Siri AI" --sources youtube --analysis-topic "on-screen awareness"  # search broad, analyze narrow
 //   node scripts/search.js --topic "X" --sources youtube --keywords "AI,camera" --time custom --start 2026-01-01 --end 2026-02-01
@@ -12,6 +12,8 @@
 //   node scripts/search.js --topic "Product X" --sources community --community-urls "https://weird-site.example.com" --comment-selector ".weird-thing" --text-selector ".say" --author-selector ".who"
 //   node scripts/search.js --topic "Product X" --sources youtube --video-urls "https://youtu.be/dQw4w9WgXcQ,https://www.youtube.com/watch?v=abc12345678"
 //   node scripts/search.js --topic "Product X" --sources youtube --video-file youtube-videos.txt
+//   node scripts/search.js --topic "Product X" --sources twitter --tweet-urls "https://x.com/user/status/1234567890123456789"
+//   node scripts/search.js --topic "Product X" --sources youtube,twitter --video-file youtube-videos.txt --tweet-file tweets.txt
 
 const fs = require('fs');
 const { loadEnv } = require('../lib/config/env');
@@ -20,7 +22,9 @@ const { saveDataset } = require('../lib/storage/datasetWriter');
 const { checkSourceCredentials } = require('../lib/credentials');
 const { buildReport } = require('../lib/analysis/buildReport');
 const youtube = require('../lib/collectors/youtube');
+const twitter = require('../lib/collectors/twitter');
 const { DEFAULT_TIME_PERIOD } = require('../lib/utils/dateRange');
+const { DEFAULT_SOURCES } = require('../lib/config/constants');
 const { ensureVisibleLink } = require('../lib/utils/visibleLink');
 const logger = require('../lib/utils/logger');
 
@@ -127,10 +131,11 @@ async function main() {
   const analysisTopic = String(opts['analysis-topic'] || '').trim() || null;
 
   const validIds = listCollectors().map((c) => c.id);
-  const sources = parseListArg(opts.sources).map((s) => s.toLowerCase());
+  let sources = parseListArg(opts.sources).map((s) => s.toLowerCase());
+  const usedDefaultSources = sources.length === 0;
+  if (usedDefaultSources) sources = [...DEFAULT_SOURCES];
   const invalid = sources.filter((s) => !validIds.includes(s));
   if (invalid.length) return fail(`Unknown source(s): ${invalid.join(', ')}. Valid: ${validIds.join(', ')}.`);
-  if (!sources.length) return fail(`--sources is required, e.g. --sources ${validIds.join(',')}.`);
 
   const validTimePeriods = ['24hours', '7days', '15days', '30days', 'custom'];
   const timePeriod = opts.time || DEFAULT_TIME_PERIOD;
@@ -198,6 +203,43 @@ async function main() {
     videoIds = [...new Set(videoIds)];
   }
 
+  if (opts['tweet-urls'] && opts['tweet-file']) {
+    return fail('Use either --tweet-urls or --tweet-file, not both — pick one.');
+  }
+  let tweetIds = [];
+  if (opts['tweet-urls'] || opts['tweet-file']) {
+    if (!sources.includes('twitter')) {
+      return fail('--tweet-urls/--tweet-file require --sources to include twitter.');
+    }
+    let rawTweets;
+    if (opts['tweet-urls']) {
+      rawTweets = parseListArg(opts['tweet-urls']);
+    } else {
+      const filePath = String(opts['tweet-file']);
+      if (!fs.existsSync(filePath)) {
+        return fail(`--tweet-file not found: ${filePath}`);
+      }
+      rawTweets = fs
+        .readFileSync(filePath, 'utf8')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith('#'));
+    }
+    if (!rawTweets.length) {
+      return fail('No tweet URLs/IDs found — check --tweet-urls or the contents of --tweet-file.');
+    }
+    const invalidTweets = [];
+    for (const raw of rawTweets) {
+      const id = twitter.extractTweetId(raw);
+      if (id) tweetIds.push(id);
+      else invalidTweets.push(raw);
+    }
+    if (invalidTweets.length) {
+      return fail(`Could not recognize as Twitter/X tweet URLs/IDs: ${invalidTweets.join(', ')}`);
+    }
+    tweetIds = [...new Set(tweetIds)];
+  }
+
   const query = {
     topic,
     analysisTopic,
@@ -208,13 +250,20 @@ async function main() {
     communityUrls,
     communitySelectors,
     videoIds,
+    tweetIds,
   };
   const sourceResults = [];
 
   const timeLabel = timePeriod === 'custom' ? `${opts.start} to ${opts.end}` : TIME_PERIOD_LABELS[timePeriod];
   logger.heading(`Researching "${topic}" — ${timeLabel}`);
+  if (usedDefaultSources) {
+    logger.step(`No --sources given — defaulting to ${DEFAULT_SOURCES.join(',')}.`);
+  }
   if (videoIds.length) {
-    logger.step(`YouTube: using ${videoIds.length} explicitly listed video(s) — skipping keyword search and the --time window for this source.`);
+    logger.step(`YouTube: also checking ${videoIds.length} explicitly listed video(s) in addition to the topic search (any overlap with the search results is collected once, not twice; the --time window doesn't apply to these).`);
+  }
+  if (tweetIds.length) {
+    logger.step(`Twitter/X: also checking ${tweetIds.length} explicitly listed tweet(s) in addition to the topic search (any overlap is collected once, not twice).`);
   }
   for (const sourceId of sources) {
     const collector = getCollector(sourceId);
