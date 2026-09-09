@@ -83,7 +83,7 @@ only needs `SKILL.md`, `scripts/`, and `lib/`; nothing else in this repo is requ
 
 The skill will:
 
-1. Collect real comments/posts from the sources you name (or the sensible default, YouTube + Reddit)
+1. Collect real comments/posts from the sources you name (or the sensible default, YouTube + Twitter/X)
 2. Print grounded sentiment counts, theme clusters, and real top quotes back to the agent
 3. The agent reads that data and writes the analysis directly in the conversation — sentiment split,
    what people like/dislike, feature requests with user counts, real quotes
@@ -98,7 +98,10 @@ The skill will:
 
 ## Credentials
 
-Every source needs *your own* credentials — get them from the official provider:
+Every source needs *your own* credentials — get them from the official provider. Note that **Twitter/X is
+one of the two default sources** (see Commands below), but unlike the others it has no fallback that works
+without a credential — without a token, a default run collects YouTube only, and `search.js` reports the
+skip clearly rather than silently under-delivering:
 
 | Source | Required? | Get it from |
 |---|---|---|
@@ -194,6 +197,25 @@ whole dataset (not just the goal), while `topTopics`/`painPoints`/`loves`/`reque
 with goal-relevant entries and still surface other significant findings — saying so honestly if only a few
 items are directly on-topic for the goal itself, rather than padding that part out with unrelated comments.
 Omit `--analysis-topic` (or just give a bare topic in chat) and you get Explore mode, as before.
+
+### Analysis depth: thorough vs. fast
+
+A separate choice from Explore/Targeted mode above — that one controls *what* the analysis focuses on; this
+one controls *how* the agent arrives at each card's "mentions" count once collection is done. The agent asks
+this once, up front, alongside the topic question:
+
+- **Thorough** (default) — the agent reads every single collected comment itself and writes each entry's
+  mention count directly, from its own judgment. More accurate on ambiguous/borderline cases, but slower on
+  a large dataset since every comment goes through the agent's own reasoning.
+- **Fast** (opt-in) — the agent still reads the comments to find real topics/pain points/etc., but instead
+  of tallying mentions by hand, it supplies a handful of keyword terms per entry; those terms are then
+  matched exhaustively across every collected item by a deterministic local pass (not the agent, not an
+  LLM), producing a real, reproducible count in milliseconds regardless of dataset size — at the cost of
+  being a keyword match rather than the agent's own read of every edge case.
+
+This is recorded as `analysisMode` (`"thorough"` or `"fast"`) in the saved `.insights.json` file. Say
+"quick"/"fast is fine" or "take your time, be thorough" in your own request to skip the question and set the
+mode directly.
 
 ### Community site source
 
@@ -341,6 +363,7 @@ This skill was born from the belief that:
 - Comment auto-detection is a best-effort heuristic across arbitrary site markup — it won't fit every site. Use the `--comment-selector`/`--text-selector`/`--author-selector`/`--date-selector` overrides for sites it misses.
 - This skill does not check `robots.txt` before fetching a community page. Only point it at sites you have permission to collect from.
 - Sentiment/theme tags applied at collection time are a fast local heuristic (keyword/regex-based), meant for filtering and clustering — not a substitute for actually reading the data.
+- Fast analysis mode's mention counts come from a keyword match (`matchTerms`) over the full dataset, not the agent individually judging every borderline comment — accurate and reproducible, but a term list can over- or under-match relative to what a full read would catch. Use thorough mode (the default) if that matters for your use case.
 - Person-focused research (feedback about an individual rather than a company/product/feature) isn't a supported use case.
 - Comparing two topics, or a topic against your own product, isn't built into these scripts yet.
 
