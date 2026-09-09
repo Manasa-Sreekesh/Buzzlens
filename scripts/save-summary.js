@@ -7,8 +7,14 @@
 //   node scripts/save-summary.js <datasetId> --text "..."                        (optional plain-text copy)
 //   node scripts/save-summary.js <datasetId> --file <path-to-summary.md>
 //   node scripts/save-summary.js <datasetId> --insights <path> --text "..."      (both, in one call)
+//   node scripts/save-summary.js <datasetId> --insights <path> --no-open         (skip auto-opening the dashboard)
+//
+// On a successful save, the dashboard opens automatically (a background
+// `dashboard.js` process is spawned) — no separate command needed.
 
 const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
 const { loadEnv } = require('../lib/config/env');
 const { getDataset } = require('../lib/storage/manifest');
 const { loadDatasetItems } = require('../lib/storage/datasetReader');
@@ -16,6 +22,25 @@ const { summaryFilePath } = require('../lib/summaryFile');
 const { insightsFilePath, validateInsights, attachSourceBreakdown } = require('../lib/insightsFile');
 const { ensureVisibleLink } = require('../lib/utils/visibleLink');
 const logger = require('../lib/utils/logger');
+
+// Spawns `dashboard.js <id>` detached from this process and immediately
+// unref'd, so save-summary.js can exit right away instead of blocking on
+// the dashboard's own long-running server. This is what makes "the
+// dashboard just opens" true regardless of whether whatever ran this
+// script remembers to run a separate dashboard command afterward.
+function launchDashboard(datasetId) {
+  try {
+    const dashboardScript = path.join(__dirname, 'dashboard.js');
+    const child = spawn(process.execPath, [dashboardScript, datasetId], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
 
 function parseArgs(argv) {
   const opts = { _: [] };
@@ -95,7 +120,13 @@ async function main() {
     return fail('Nothing to save — provide --insights <path> (drives the PM dashboard), and/or --text "..." or --file <path>.');
   }
 
-  logger.step(`View it with: node scripts/dashboard.js ${entry.id}`);
+  if (opts['no-open']) {
+    logger.step(`View it with: node scripts/dashboard.js ${entry.id}`);
+  } else if (launchDashboard(entry.id)) {
+    logger.step('Opening the dashboard now...');
+  } else {
+    logger.step(`Couldn't auto-open the dashboard — view it with: node scripts/dashboard.js ${entry.id}`);
+  }
 }
 
 main().catch((e) => {

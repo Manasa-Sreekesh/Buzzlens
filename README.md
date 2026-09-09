@@ -21,10 +21,10 @@ to the agent to read and write the analysis.
   package and nothing to set up for that part.
 - **Grounded Clustering** — local, deterministic sentiment and theme clustering (like/dislike/feature-request)
   with distinct-user counts, not just comment counts.
-- **PM-Focused Local Dashboard** — a 6-section dashboard (overview, top topics, pain points, what users
-  love, user requests, and evidence-backed PM recommendations) built from the agent's own reading of the
-  comments, every card traceable back to a real comment. Viewable as a live local server or exported to a
-  single static HTML file.
+- **PM-Focused Local Dashboard** — an executive summary of top findings followed by a 6-section dashboard
+  (overview, top topics, pain points, what users love, user requests, and evidence-backed PM
+  recommendations) built from the agent's own reading of the comments, every card traceable back to a real
+  comment. Viewable as a live local server or exported to a single static HTML file.
 - **Fully Self-Contained** — no dependency on anything outside this folder. Clone it and use it — nowhere
   else to look. The agent installs its own small dependency set automatically the first time it runs.
 
@@ -123,49 +123,77 @@ first in Phase 1 too, so it only asks you for keys that are actually missing ins
 ## Commands
 
 ```bash
-node scripts/search.js --topic "Galaxy AI"                                       # defaults to --sources youtube,reddit and the last 30 days
-node scripts/search.js --topic "Galaxy AI" --sources youtube,reddit --time 7days  # or --time 15days
+node scripts/search.js --topic "Galaxy AI"                                        # defaults to --sources youtube,twitter and the last 12 months
+node scripts/search.js --topic "Galaxy AI" --sources youtube,twitter --time 7days  # or --time 15days/30days
 node scripts/search.js --topic "Siri AI" --sources youtube --analysis-topic "on-screen awareness"  # search broad, analyze narrow
 node scripts/search.js --topic "Product X" --sources community --community-urls "https://forum.example.com/thread/1,https://reviews.example.com/product-x"
 node scripts/search.js --topic "Product X" --sources youtube --video-urls "https://youtu.be/abc123XYZ89"  # adds this video to the topic search, doesn't replace it
 node scripts/search.js --topic "Product X" --sources youtube --video-file youtube-videos.txt
 node scripts/search.js --topic "Product X" --sources youtube,twitter                                     # combined multi-source run, one dataset
 node scripts/search.js --topic "Product X" --sources twitter --tweet-urls "https://x.com/someuser/status/1234567890123456789"
-node scripts/save-summary.js <datasetId> --insights <path-to-insights.json>  # drives the PM dashboard
+node scripts/save-summary.js <datasetId> --insights <path-to-insights.json>  # drives the PM dashboard, opens it automatically
 node scripts/save-summary.js <datasetId> --text "..."      # optional plain-text copy, not shown on the dashboard
-node scripts/dashboard.js <datasetId>                        # or --static for a single HTML file
+node scripts/save-summary.js <datasetId> --insights <path> --no-open  # skip auto-opening the dashboard
+node scripts/dashboard.js <datasetId>                        # reopen a dataset's dashboard later, or --static for a single HTML file
 node scripts/list.js                                         # see saved datasets
 node scripts/credentials.js                                  # see which API keys are already set in .env
 ```
 
 `search.js` never recollects a topic you already have — reuse a saved dataset's id with
-`dashboard.js`/`save-summary.js`, or check `list.js` first.
+`dashboard.js`/`save-summary.js`, or check `list.js` first. `save-summary.js` opens the dashboard for you the
+moment it saves successfully; `dashboard.js` on its own is only for reopening it later or exporting a static
+file.
 
 ### Time window
 
-`--time` defaults to **the last 30 days** — every run prints this in its header so it's always clear what
-window was searched. Pass `--time 7days` or `--time 15days` for a narrower window, or `--time custom --start
-YYYY-MM-DD --end YYYY-MM-DD` for an exact range. This applies to every time-windowed source (YouTube topic
-search, Reddit, Twitter/X); `community` and an explicit YouTube `--video-urls`/`--video-file` list always
-fetch their exact targets regardless of `--time`. Twitter/X's recent-search API only covers roughly the last
-7 days regardless of what's requested — a platform limitation `search.js` reports rather than silently
-under-delivering.
+`--time` defaults to **the last 12 months** — every run prints this in its header so it's always clear what
+window was searched. Pass `--time 24hours`, `--time 7days`, `--time 15days`, or `--time 30days` for a
+narrower window, or `--time custom --start YYYY-MM-DD --end YYYY-MM-DD` for an exact range. This applies to
+every time-windowed source (YouTube topic search, Reddit, Twitter/X); `community` and an explicit YouTube
+`--video-urls`/`--video-file` list always fetch their exact targets regardless of `--time`. Twitter/X's
+recent-search API only covers roughly the last 7 days regardless of what's requested — a platform limitation
+`search.js` reports rather than silently under-delivering.
 
-### Searching broad, analyzing narrow
+### YouTube video and comment defaults
 
-`--analysis-topic` lets you search under a broad topic (more data) while keeping the analysis and dashboard
-focused on one specific angle within it:
+With `YOUTUBE_API_KEY` set, `search.js` searches for videos published within the `--time` window (12 months
+by default) and keeps the top **20** by relevance. For each video, it collects up to **300 top-level
+comments** — roughly 200 relevance-ranked plus 100 most-recent, deduped where they overlap, so the set
+balances prominent opinions with newer feedback rather than only surfacing top comments. If a video has
+fewer than 300 comments, all of them are collected. Every collected top-level comment's full reply thread is
+also fetched, not just its first few replies, so sub-discussions aren't cut short.
+
+Without `YOUTUBE_API_KEY`, collection falls back to reading public YouTube pages directly — that path is
+inherently smaller (top 5 videos, ~1 page of top-level comments each, no reply threads) and unaffected by
+the numbers above.
+
+### Explore mode vs. Targeted mode
+
+Just tell the agent what you want to understand — a topic, or a topic plus what you specifically want to
+know — in one conversational message. No separate prompts, nothing to fill in as a form:
+
+- **Explore mode** (default) — you give just a topic (e.g. "Dyson V15 vacuum"). The agent runs the standard,
+  full-breadth analysis: sentiment, top positive/negative themes, most-discussed features, requests,
+  emerging issues, all grounded in evidence.
+- **Targeted mode** — you also say what you specifically want to know (e.g. "Dyson V15 vacuum — I want to
+  understand whether the suction power holds up over time and how it compares to the V12"). The agent
+  splits that into a broad `--topic` (more data collected) and a narrower `--analysis-topic` goal, then
+  prioritizes insights relevant to that goal while still giving you a brief standard buzz overview and
+  calling out any other significant, unexpected finding in the data — not just what you asked about.
+
+Under the hood this is still one flag:
 
 ```bash
 node scripts/search.js --topic "Siri AI" --sources youtube --analysis-topic "on-screen awareness"
 ```
 
-Collection is unaffected — `--topic` still drives what gets searched/collected. `--analysis-topic` is
-carried on the saved dataset and shown on the dashboard (e.g. "On-screen Awareness, searched under 'Siri
-AI'"), and it's what the agent's Phase 2/3 analysis is instructed to center on: every dashboard section
-should focus on comments relevant to that angle, and say so honestly if only a few items are directly
-on-topic rather than diluting the analysis with unrelated ones. Omit it and the analysis simply covers
-everything found under `--topic`, as before.
+Collection is unaffected — `--topic` still drives what gets searched/collected; `--analysis-topic` only
+changes how Phase 2/3 writes the analysis. It's carried on the saved dataset and shown on the dashboard (e.g.
+"On-screen Awareness, searched under 'Siri AI'"). In Targeted mode, the `overview` section still reflects the
+whole dataset (not just the goal), while `topTopics`/`painPoints`/`loves`/`requests`/`recommendations` lead
+with goal-relevant entries and still surface other significant findings — saying so honestly if only a few
+items are directly on-topic for the goal itself, rather than padding that part out with unrelated comments.
+Omit `--analysis-topic` (or just give a bare topic in chat) and you get Explore mode, as before.
 
 ### Community site source
 
@@ -251,8 +279,8 @@ reads first, and each phase hands off to one script:
 | 0. Setup | *(automatic)* | The agent installs the small local dependency set on first run — nothing you configure |
 | 1. Collect | `scripts/search.js` | Fetches real comments/posts from the chosen sources, clusters and prints them |
 | 2. Analyze | *(the agent itself)* | Reads the printed data and writes a grounded, id-referenced PM insights JSON — no script, no LLM call |
-| 3. Save | `scripts/save-summary.js` | Validates every id in the insights JSON against the real dataset, then attaches it to the saved dataset |
-| 4. Dashboard (optional) | `scripts/dashboard.js` | Opens the 6-section PM dashboard, or exports one static HTML file |
+| 3. Save | `scripts/save-summary.js` | Validates every id in the insights JSON against the real dataset, attaches it, then opens the dashboard automatically |
+| 4. Dashboard | `scripts/dashboard.js` | Opened automatically by step 3 — run directly only to reopen it later or export one static HTML file |
 | — | `scripts/list.js` | Lists previously saved datasets, so topics aren't recollected needlessly |
 | — | `scripts/credentials.js` | Shows which API keys are already set in `.env` (masked), checked before Phase 1 asks about them |
 

@@ -4,8 +4,8 @@
 // falls back to fake data. See ../SKILL.md for the full workflow.
 //
 // Usage:
-//   node scripts/search.js --topic "Galaxy AI"                                           # defaults to --sources youtube,reddit and --time 30days
-//   node scripts/search.js --topic "Galaxy AI" --sources youtube,reddit --time 7days      # or 15days
+//   node scripts/search.js --topic "Galaxy AI"                                           # defaults to --sources youtube,twitter and --time 12months
+//   node scripts/search.js --topic "Galaxy AI" --sources youtube,twitter --time 7days     # or 15days/30days
 //   node scripts/search.js --topic "Siri AI" --sources youtube --analysis-topic "on-screen awareness"  # search broad, analyze narrow
 //   node scripts/search.js --topic "X" --sources youtube --keywords "AI,camera" --time custom --start 2026-01-01 --end 2026-02-01
 //   node scripts/search.js --topic "Product X" --sources community --community-urls "https://forum.example.com/thread/1,https://reviews.example.com/product-x"
@@ -23,18 +23,10 @@ const { checkSourceCredentials } = require('../lib/credentials');
 const { buildReport } = require('../lib/analysis/buildReport');
 const youtube = require('../lib/collectors/youtube');
 const twitter = require('../lib/collectors/twitter');
-const { DEFAULT_TIME_PERIOD } = require('../lib/utils/dateRange');
+const { DEFAULT_TIME_PERIOD, TIME_PERIOD_LABELS } = require('../lib/utils/dateRange');
 const { DEFAULT_SOURCES } = require('../lib/config/constants');
 const { ensureVisibleLink } = require('../lib/utils/visibleLink');
 const logger = require('../lib/utils/logger');
-
-const TIME_PERIOD_LABELS = {
-  '24hours': 'the last 24 hours',
-  '7days': 'the last 7 days',
-  '15days': 'the last 15 days',
-  '30days': 'the last 30 days',
-  custom: 'a custom date range',
-};
 
 function parseArgs(argv) {
   const opts = {};
@@ -66,6 +58,19 @@ function fail(message) {
   process.exitCode = 1;
 }
 
+// A single collector call can run silently for a while (YouTube's paginated
+// comment/reply collection especially) — this prints a plain "still
+// working" line every 15s so a long collection never looks stalled, without
+// exposing what it's actually doing underneath (no API/page-fetch detail).
+function withHeartbeat(promise, label, intervalMs = 15000) {
+  const startedAt = Date.now();
+  const timer = setInterval(() => {
+    const elapsed = Math.round((Date.now() - startedAt) / 1000);
+    logger.step(`  ...still collecting from ${label} (${elapsed}s)`);
+  }, intervalMs);
+  return promise.finally(() => clearInterval(timer));
+}
+
 function printSummary(entry, report) {
   const { stats, positiveClusters, negativeClusters, recommendationClusters, topQuotesBySource } = report;
 
@@ -78,7 +83,7 @@ function printSummary(entry, report) {
       : TIME_PERIOD_LABELS[entry.timePeriod] || entry.timePeriod;
   logger.step(`Topic: ${entry.topic} | Window: ${entryTimeLabel} | Total items: ${stats.totalItems} | Sources: ${entry.sourcesSucceeded.join(', ') || 'none'}`);
   if (entry.analysisTopic) {
-    logger.step(`Analysis focus: "${entry.analysisTopic}" — searched broadly under "${entry.topic}", but the Phase 2/3 insights (and the dashboard) should focus specifically on this angle. If only a few items are directly on-topic, say so rather than diluting the analysis with unrelated items.`);
+    logger.step(`Analysis focus: "${entry.analysisTopic}" — searched broadly under "${entry.topic}". This is Targeted mode: the Phase 2/3 insights (and the dashboard) should lead with entries relevant to this angle, keep a brief standard overview of the whole dataset, and still surface other significant/unexpected findings from the data — see SKILL.md Phase 2 for the full rules.`);
   }
   if (entry.sourcesFailed.length) {
     for (const f of entry.sourcesFailed) logger.warn(`  Skipped ${f.source}: ${f.reason}`);
@@ -137,7 +142,7 @@ async function main() {
   const invalid = sources.filter((s) => !validIds.includes(s));
   if (invalid.length) return fail(`Unknown source(s): ${invalid.join(', ')}. Valid: ${validIds.join(', ')}.`);
 
-  const validTimePeriods = ['24hours', '7days', '15days', '30days', 'custom'];
+  const validTimePeriods = ['24hours', '7days', '15days', '30days', '12months', 'custom'];
   const timePeriod = opts.time || DEFAULT_TIME_PERIOD;
   if (!validTimePeriods.includes(timePeriod)) {
     return fail(`Unknown --time value "${timePeriod}". Valid: ${validTimePeriods.join(', ')} (default ${DEFAULT_TIME_PERIOD}).`);
@@ -275,7 +280,7 @@ async function main() {
     }
     logger.step(`Collecting from ${collector.label}...`);
     try {
-      const result = await collector.collect(query, creds);
+      const result = await withHeartbeat(collector.collect(query, creds), collector.label);
       const statusWord = { ok: 'done', partial: 'partial', skipped: 'skipped', error: 'FAILED' }[result.status] || result.status;
       logger.step(`  ${collector.label}: ${statusWord} — ${result.items.length} items from ${result.postCount} posts/videos.${result.errorMessage ? ` (${result.errorMessage})` : ''}`);
       sourceResults.push({ sourceId, result });

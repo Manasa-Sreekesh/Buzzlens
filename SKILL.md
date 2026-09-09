@@ -22,6 +22,23 @@ npm install
 (This installs a few small packages — `exceljs`, `express`, `open`, `dotenv`, `chalk`, `cheerio` — used for
 saving datasets, running the local dashboard, reading credentials, and parsing community-site HTML. Nothing else.)
 
+## Keep the user informed, minimally
+
+The user is watching a chat, not a terminal — the raw output of `search.js`/`save-summary.js`/`dashboard.js`
+isn't the user experience, your own messages are. Post a short status line immediately when you start
+collecting, and another when each phase finishes — never relay raw script output (item ids, API error text,
+theme-cluster dumps, quote lists) into the chat; that data is for you to read, not to paste.
+
+- The moment you start Phase 1 (before the collection command even finishes): a one-line "Researching
+  [topic]..." — so the user sees something is happening right away, not after a wait.
+- When Phase 1 finishes: one short line with just the headline numbers, e.g. "Collected 376 comments from
+  YouTube and Twitter/X." Not the sentiment split, not the theme clusters, not per-source error detail —
+  mention a skipped source only in one short clause if it means meaningfully less data than expected.
+- During Phase 2, if it's taking a while: at most one short update ("Still reading through the comments...")
+  — never a running commentary of what you're finding as you go.
+- After Phase 3 saves: "Analysis complete — opening the dashboard now." The dashboard opens on its own (see
+  Phase 4) — you don't need to tell the user to run anything themselves.
+
 ## Phase 1: Ask, then collect
 
 **Before asking anything about credentials, check what's already configured:**
@@ -37,37 +54,75 @@ needs is already `✔`, don't ask about it at all — just proceed. `.env` (copy
 is the one local, gitignored file every API key lives in; it's never sent anywhere except each key's own
 official API.
 
-**Ask the user exactly one question up front — the research topic — and nothing else:**
+**Ask the user one open question up front, plus one short choice about analysis depth (see below) —
+nothing else:**
 
-> What do you want to research?
+> What product, feature, or topic do you want to understand?
 
-Keep it a plain, open question. Don't suggest example topics, don't guess one for them, and don't turn it
-into a multiple-choice pick. It's required, and must be an actual research topic (a company, product, or
-feature) — not a person, and not left blank. If what they give isn't one, ask again (still just the topic,
-not a menu of options) rather than guessing.
+Keep it plain and conversational — not a form. Don't suggest example topics, don't guess one for them, and
+don't split it into a topic prompt followed by a separate goal prompt. In the same breath, the user is free
+to also say what they specifically want to find out — a question, a hunch, a comparison — but never require
+it and never ask for it separately. Read whatever comes back as a whole to decide the mode:
 
-Skip asking it at all if they've already stated a topic in chat. Everything below this point is handled
-with sensible defaults or by reading the user's own wording — **do not turn any of it into an upfront
-question**:
+- **Explore mode** (the default): the reply is just a topic — a company, product, or feature (e.g. "Dyson
+  V15 vacuum"), nothing more specific attached. Run the standard, full-breadth analysis in Phase 2 —
+  sentiment, top positive/negative themes, most-discussed features, requests, emerging issues, all grounded
+  in evidence.
+- **Targeted mode**: the reply also carries a specific question, goal, or angle within that topic (e.g.
+  "Dyson V15 vacuum — I want to understand whether the suction power holds up over time and how it compares
+  to the V12"). Split it yourself into the subject (`--topic`) and the goal (`--analysis-topic`, see below) —
+  never ask the user to separate the two themselves. Targeted mode still produces a brief standard buzz
+  overview alongside insights prioritized toward the stated goal, and calls out any other significant
+  finding the data turns up even when it's outside the goal — see Phase 2 for exactly how the two blend.
 
-- **Sources** default to `youtube,reddit` (see `--sources` below) unless the user's own request already
-  names something else — they said "check Twitter", they pasted a forum/review URL (→ `community`), or they
-  said "just YouTube"/"just Reddit". Both defaults work with no credential via their public fallback, so
-  there's nothing to block on.
+Either way, the topic itself is required, and must be an actual research topic (a company, product, or
+feature) — not a person, and not left blank. If what they give isn't one, ask again (still the same open
+question, not a menu of options) rather than guessing.
+
+**Then ask one more thing — how thorough the analysis itself (Phase 2) should be — with an explicit
+warning about the tradeoff, not a silent default:**
+
+> Two ways I can analyze this once it's collected:
+> 1. **Thorough (default)** — I read every single comment myself and write the insights directly. More
+>    accurate, but slower on a large dataset.
+> 2. **Fast** — I still read the comments to find real topics/pain points/etc., but the mention counts are
+>    computed by an exhaustive keyword match over the full dataset instead of me tallying them by hand.
+>    Noticeably faster, at the cost of the counts being a keyword match rather than my own judgment call on
+>    every borderline case.
+>
+> Thorough unless you'd rather I go fast — which would you prefer?
+
+This is a real, distinct choice — not something to fold into the topic question or infer from wording. If
+the user doesn't answer or says something like "whatever's fine," default to **thorough**, don't ask twice.
+Whichever is chosen carries through to Phase 2/3 as the JSON's top-level `analysisMode` field (`"thorough"`
+if omitted — see Phase 2 for the schema difference between the two).
+
+Skip the topic question if they've already stated a topic (with or without a goal) in chat, and skip the
+analysis-depth question if they've already said something like "quick"/"fast is fine"/"take your time, be
+thorough" — otherwise ask it. Everything below this point is handled with sensible defaults or by reading
+the user's own wording — **do not turn any of it
+into an upfront question**:
+
+- **Sources** default to `youtube,twitter` (see `--sources` below) unless the user's own request already
+  names something else — they said "check Reddit", they pasted a forum/review URL (→ `community`), or they
+  said "just YouTube"/"just Twitter". YouTube works with no credential via its public fallback; Twitter/X has
+  no such fallback and requires `TWITTER_BEARER_TOKEN` (a paid X API tier) — since it's now a default source,
+  proactively mention this to the user if `scripts/credentials.js` shows it missing, rather than silently
+  letting a default run collect YouTube only.
 - **Credentials**: already checked above via `scripts/credentials.js`. If something relevant is missing,
   don't stop to ask — just collect via the fallback (its inline disclaimer covers the trade-off) and, once
   results are back, mention in passing that adding e.g. `YOUTUBE_API_KEY` would improve fidelity/citations.
   Only ask for a credential proactively if the user brings it up, or if a source can't run at all without
-  one (Twitter/X — see "If a source is skipped" below).
+  one (Twitter/X, including as a default source now — see "If a source is skipped" below).
 - **Specific YouTube videos or tweets**: don't ask whether the user has any. If they mention or paste video
   links or tweet links — now or later — collect those alongside the topic search rather than instead of it
   (see "YouTube: adding specific videos to the topic search" and "Twitter/X: topic search, replies, and
   specific tweets" below); up to **20** per run for each, pasted directly or via `youtube-videos.txt` /
   `tweets.txt`.
-- **Analysis focus** (`--analysis-topic`): only set it if the user's own phrasing already implies a
-  narrower angle within a broader ask (e.g. "search Siri AI but I really care about on-screen awareness").
-  Don't ask for one.
-- **Time window**: stays the documented default (`30days`) — mention it once, in the result, never as an
+- **Analysis focus / mode** (`--analysis-topic`): set it whenever the user's reply carries a goal alongside
+  the topic — see Explore vs. Targeted mode above. Never ask for one separately; extract it from their own
+  wording, or leave it unset for a topic-only reply (Explore mode, the default).
+- **Time window**: stays the documented default (`12months`) — mention it once, in the result, never as an
   upfront question.
 
 Once you have the topic (and anything else the user's own message already specified), run:
@@ -78,16 +133,17 @@ node scripts/search.js --topic "<topic>"
 
 - `--topic` — the company, product, or feature to research (required). Not a person.
 - `--sources` — comma-separated: `youtube`, `reddit`, `twitter`, `community`. Optional — defaults to
-  `youtube,reddit` when omitted, per the guidance above.
-- `--analysis-topic` — optional, a narrower angle within `--topic` to focus the analysis on (e.g.
-  `--topic "Siri AI" --analysis-topic "on-screen awareness"`). Collection is unaffected — this only carries
-  through to the dataset and dashboard so Phase 2/3 knows what to focus on (see Phase 2 below).
-- `--time` — `24hours` | `7days` | `15days` | `30days` | `custom` (**default `30days`**). Don't ask the user
-  about this upfront — just tell them, once, that you're searching **the last 30 days** by default (the
-  command's own output says this too, so you don't need to repeat it every run). If they want a narrower
-  window, mention `--time 7days` or `--time 15days` are available and re-run with whichever they pick. For
-  `custom`, also pass `--start YYYY-MM-DD --end YYYY-MM-DD`. Not used by `community` (it fetches the exact
-  page(s) given, not a time-windowed search).
+  `youtube,twitter` when omitted, per the guidance above.
+- `--analysis-topic` — optional, a narrower angle/goal within `--topic` to focus the analysis on (e.g.
+  `--topic "Siri AI" --analysis-topic "on-screen awareness"`). Setting it is what puts Phase 2 into Targeted
+  mode instead of Explore mode. Collection is unaffected — this only carries through to the dataset and
+  dashboard so Phase 2/3 knows what to focus on (see Phase 2 below).
+- `--time` — `24hours` | `7days` | `15days` | `30days` | `12months` | `custom` (**default `12months`**). Don't
+  ask the user about this upfront — just tell them, once, that you're searching **the last 12 months** by
+  default (the command's own output says this too, so you don't need to repeat it every run). If they want a
+  narrower window, mention `--time 7days`, `--time 15days`, or `--time 30days` are available and re-run with
+  whichever they pick. For `custom`, also pass `--start YYYY-MM-DD --end YYYY-MM-DD`. Not used by `community`
+  (it fetches the exact page(s) given, not a time-windowed search).
 - `--keywords` — optional comma-separated related keywords to narrow the search.
 
 If the user names a specific forum, review site, blog, or any other page with comments, use `community`
@@ -247,23 +303,50 @@ author yourself in the Phase 2 JSON.
 ## Phase 2: Analyze
 
 Read every item printed in Phase 1 (and, if you need more than what's printed, the full dataset in the
-reported Excel file) and write a **PM-focused insights JSON** — this is what drives the dashboard's 6
-sections in Phase 3/4. Read the actual comment text yourself; don't just reuse the generic `theme` labels
-from collection (`Design`, `Performance`, `General`, etc.) — those are a fast local heuristic for filtering,
-not real product topics. Name topics the way a PM would (e.g. `Camera`, `Battery`, `Charging`), based on
-what people actually wrote about.
+reported Excel file) and write a **PM-focused insights JSON** — this is what drives the dashboard's executive
+summary and 6 numbered sections in Phase 3/4. In both modes, read the actual comment text yourself; don't just reuse the generic
+`theme` labels from collection (`Design`, `Performance`, `General`, etc.) — those are a fast local heuristic
+for filtering, not real product topics. Name topics the way a PM would (e.g. `Camera`, `Battery`,
+`Charging`), based on what people actually wrote about.
 
-**If an `--analysis-topic` was set** (printed in Phase 1's output as "Analysis focus"), every section —
-`overview`, `topTopics`, `painPoints`, `loves`, `requests`, `recommendations` — should center on comments
-relevant to that specific angle, not the full breadth of what was collected under the broader search topic.
-If only a handful of items are directly on-topic, say so plainly (e.g. in `overview.topDiscussedTopic` or by
-keeping a section short) rather than padding it out with tangentially related comments — a small, honest
-insights set beats a padded one.
+The analysis must be grounded in **every single collected item**, not a sample. Which of the two modes the
+user picked in Phase 1 (default **thorough**) changes how you arrive at `mentions` (and, for `topTopics`,
+`positive`/`negative`) — see the schema below — but either way you still read every item to find the real
+topics/pain points/loves/requests in the first place; the mode only changes how the counts get computed.
 
-Build one JSON object with this shape and save it to a temp file:
+**Explore mode** (no `--analysis-topic` set): write the standard full-breadth analysis — every section draws
+on the full dataset, no narrowing.
+
+**Targeted mode** (`--analysis-topic` was set, printed in Phase 1's output as "Analysis focus"):
+- `overview` stays a brief snapshot of the **whole** dataset — the same three fields as Explore mode
+  (`topDiscussedTopic`, `biggestPainPoint`, `mostRequestedImprovement`), not narrowed to the goal. This is
+  what gives Targeted mode its "brief standard buzz overview" even while the rest of the report leans into
+  the goal.
+- `executiveSummary`, `topTopics`, `painPoints`, `loves`, `requests`, and `recommendations` should **lead
+  with** entries relevant to the stated goal (e.g. battery life, and any explicit comparison to a prior
+  version named in the goal) — put those first and give them the most detail.
+- After the goal-relevant entries, still include other significant findings from the data even when they're
+  outside the goal — don't drop a major pain point or a strongly-requested feature just because it's
+  off-topic. If something surprising or unexpected turns up (a theme the user didn't ask about but that's
+  clearly significant by mention count or sentiment strength), include it and flag it as such in its
+  `description`/`insight` text (e.g. "Unexpected: ...") so it reads as a bonus finding, not as evidence for
+  the stated goal.
+- If only a handful of items are directly on-topic for the goal itself, say so plainly rather than padding —
+  a small, honest goal-focused set of entries beats a stretched one. This doesn't apply to the rest of the
+  report, which still draws on the full dataset as usual.
+
+Build one JSON object with this shape and save it to a temp file. This is the **thorough** mode shape (the
+default — omit `analysisMode` entirely, or set it to `"thorough"` explicitly):
 
 ```jsonc
 {
+  "executiveSummary": [
+    // 3-6 of these. The handful of findings a PM or leader most needs to walk away with, shown at the
+    // very top of the dashboard, above Overview. Each one is a specific, evidence-backed statement, not
+    // a category label — "Suction complaints cluster around the first 3 months of ownership", not "Suction".
+    // mentions = distinct users who raised it, from your own read.
+    { "finding": "22 distinct commenters report motor/board failures within 1-3 years", "mentions": 22, "itemIds": ["yt_abc123", "..."] }
+  ],
   "overview": {
     "topDiscussedTopic": "Camera",                                    // required, short
     "biggestPainPoint": "Battery drains quickly while using the camera",  // required, specific — not just "Battery"
@@ -298,19 +381,41 @@ Build one JSON object with this shape and save it to a temp file:
 }
 ```
 
+**Fast mode** (only if the user chose it in Phase 1): add `"analysisMode": "fast"` at the top level, and on
+every `executiveSummary`/`topTopics`/`painPoints`/`loves`/`requests` entry, replace `mentions` (and, for
+`topTopics`, `positive`/`negative`) with `matchTerms` instead — 2-6 keywords/short phrases that would
+reliably match comments about this specific entry (case-insensitive substring match against every collected
+item's text, not just the ones you cited as evidence):
+
+```jsonc
+{ "topic": "Camera", "matchTerms": ["camera", "photo", "lens"], "itemIds": ["yt_abc123", "..."] }
+```
+
+Phase 3 then runs an exhaustive keyword match over the whole dataset to compute the real `mentions` (and
+`positive`/`negative`) from those terms — don't write `mentions`/`positive`/`negative` yourself in fast mode,
+Phase 3 will reject the file if you do. Pick terms specific enough to avoid false matches (`"battery drain"`,
+not just `"battery"` if the topic is really about drain specifically) but complete enough to catch real
+variations (`"stopped working"`, `"stops working"`, `"won't turn on"` for the same underlying complaint).
+`recommendations` never uses `matchTerms` in either mode — it has no mentions stat.
+
 Rules, enforced on save (Phase 3 will reject the file and tell you exactly what's wrong if you violate these):
-- Every entry in `topTopics`, `painPoints`, `loves`, `requests`, and `recommendations` **must** include a
-  non-empty `itemIds` array of real item `id`s from this dataset (the `ID` column in the Excel file / the
-  `id` field in the printed items) — this is what makes every card on the dashboard traceable back to an
-  actual comment. Never invent an id or reuse one from a different dataset.
+- Every entry in `executiveSummary`, `topTopics`, `painPoints`, `loves`, `requests`, and `recommendations`
+  **must** include a non-empty `itemIds` array of real item `id`s from this dataset (the `ID` column in the
+  Excel file / the `id` field in the printed items) — this is what makes every card on the dashboard
+  traceable back to an actual comment. Never invent an id or reuse one from a different dataset.
 - `representativeItemId`, where present, must also be a real id from this dataset.
+- In **thorough** mode (default): every entry in `executiveSummary`, `topTopics`, `painPoints`, `loves`, and
+  `requests` **must** include a `mentions` number (and `topTopics` must also include `positive`/`negative`).
+- In **fast** mode (`analysisMode: "fast"`): every entry in those same sections **must** include a non-empty
+  `matchTerms` array instead, and must NOT include `mentions` (or, for `topTopics`, `positive`/`negative`).
 - All three `overview` fields are required, non-empty strings.
 - Don't fabricate a `recommendations` entry's `insight`/`action` beyond what the cited comments support —
   say "not enough evidence" in the underlying section instead of stretching a conclusion.
 - Don't add a `sourceBreakdown` field yourself — Phase 3 computes and attaches it automatically (per entry
-  and on `overview`) from each `itemIds` entry's real `source`, so it can't drift from the actual data.
+  and on `overview`) from each entry's real matches (in fast mode) or `itemIds` (in thorough mode, and
+  always for `recommendations`), so it can't drift from the actual data.
 
-## Phase 3: Save
+## Phase 3: Save (this also opens the dashboard — Phase 4 is automatic)
 
 ```
 node scripts/save-summary.js <datasetId> --insights <path-to-insights.json>
@@ -324,30 +429,31 @@ Optionally, also save a free-text narrative alongside it (not shown on the dashb
 copy next to the dataset for your own reference) with `--text "..."` or `--file <path>` — either can be
 combined with `--insights` in the same call.
 
-## Phase 4: Open the dashboard
+**On success, this command itself opens the dashboard** — no separate Phase 4 command needed, and nothing
+for you to remember. It spawns `dashboard.js` in the background and exits immediately, so your own command
+returns right away; the dashboard server comes up and opens a browser tab on its own a moment later. In the
+chat, just say something like "Analysis complete — opening the dashboard now" once this command succeeds —
+don't restate the stats you already gave after Phase 1, and don't tell the user to run anything themselves.
 
-As soon as the summary is saved, open the dashboard automatically — don't ask first, and don't treat this
-as optional:
+## Phase 4: The dashboard (opened automatically by Phase 3 — read this for what it contains)
 
-```
-node scripts/dashboard.js <datasetId>
-```
+The dashboard is a local server showing a PM-focused view: an Executive Summary of the top findings, then 6
+numbered sections — Overview, Top Topics/Features, Top Pain Points, What Users Love, User
+Requests/Suggestions, and PM Recommendations — each card linking to the real supporting comments (video
+title, date, likes, and a direct source link) via a "View comments"/"View evidence" action. When the dataset
+mixes more than one source, a filter bar at the top lets the user switch between "All sources" and each
+individual source (see "Combined multi-source analysis" above) — no extra step needed from you for this to
+appear. This is where the user reads the full analysis, not the chat.
 
-This starts a local server and opens a PM-focused dashboard in the browser with 6 sections: Overview,
-Top Topics/Features, Top Pain Points, What Users Love, User Requests/Suggestions, and PM Recommendations —
-each card links to the real supporting comments (video title, date, likes, and a direct source link) via a
-"View comments"/"View evidence" action. When the dataset mixes more than one source, a filter bar at the top
-lets the user switch between "All sources" and each individual source (see "Combined multi-source analysis"
-above) — no extra step needed from you for this to appear. This is where the user reads the full analysis,
-not the chat. If Phase 3's insights weren't saved yet, the dashboard still renders using local heuristics
-only, with a banner saying so — always complete Phase 2/3 first so the dashboard shows your actual reading
-of the comments, not just theme buckets. This command blocks the terminal on purpose (it keeps the server
-up) — run it in the background rather than waiting on it.
+You only need to run `node scripts/dashboard.js <datasetId>` yourself in two cases:
+- **The environment can't open a browser** (headless/remote) — use `node scripts/dashboard.js <datasetId>
+  --static` instead and share the generated file path. Phase 3's auto-launch still tries the normal way
+  first and falls back to telling you the manual command if it can't; you don't need to guess in advance.
+- **You want to reopen an existing dataset's dashboard later**, without re-saving anything.
 
-In the chat response itself, give only a brief stats summary — total items, sentiment split, per-source
-counts, that kind of thing (no quotes, no theme write-up) — then note that the dashboard has opened with
-the full analysis. If the environment can't open a browser (e.g. headless/remote), fall back to `--static`
-and share the generated file path instead.
+If Phase 3's insights weren't saved yet, the dashboard still renders using local heuristics only, with a
+banner saying so — always complete Phase 2/3 first so the dashboard shows your actual reading of the
+comments, not just theme buckets.
 
 ## What NOT to do
 
