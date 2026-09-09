@@ -73,22 +73,34 @@ Agents such as Codex, Kimi Code, OpenCode, Gemini CLI, or other local coding ass
 shell access can use the same skill — point the agent at this folder and ask it to follow `SKILL.md`. It
 only needs `SKILL.md`, `scripts/`, and `lib/`; nothing else in this repo is required for the skill to run.
 
-## Usage
+## Getting Started
 
-```text
-"What do people think of Galaxy AI?"
-"Research feedback on Notion's new AI features"
-"Check the comments on this forum thread: <url>"
-```
+1. **Install it** — see Installation above.
 
-The skill will:
+2. **Add at least one API key.** Copy `.env.example` to `.env` and fill in what you have. YouTube and Reddit
+   work with no key at all (lower-fidelity public fallback); Twitter/X — one of the two default sources —
+   has no such fallback, so without a key a default run collects YouTube only. Full per-source instructions
+   are in Credentials below.
 
-1. Collect real comments/posts from the sources you name (or the sensible default, YouTube + Twitter/X)
-2. Print grounded sentiment counts, theme clusters, and real top quotes back to the agent
-3. The agent reads that data and writes the analysis directly in the conversation — sentiment split,
-   what people like/dislike, feature requests with user counts, real quotes
-4. Save that analysis so it's attached to the dataset
-5. Optionally open a local dashboard to browse it visually
+3. **Ask a real question**, in plain language:
+
+   ```text
+   "What do people think of Galaxy AI?"
+   "Research feedback on Notion's new AI features"
+   "Check the comments on this forum thread: <url>"
+   ```
+
+4. **What happens next, automatically:**
+   - The agent asks one more quick thing — how thorough the analysis should be (default: thorough, see
+     "Analysis depth" below) — then collects real comments/posts from the sources you named, or the
+     default, YouTube + Twitter/X.
+   - It reads what it collected and writes the analysis itself — sentiment, what people like/dislike,
+     feature requests, real quotes — no LLM to configure; the agent running the skill *is* the analyst.
+   - It saves that analysis, attached to the dataset.
+
+5. **Get your report.** The dashboard opens automatically in your browser the moment the analysis is saved —
+   nothing else to run. From there you can also download the entire raw collected dataset as JSON, and
+   reopen the same dashboard later with `node scripts/dashboard.js <datasetId>` (see Commands below).
 
 ## Requirements
 
