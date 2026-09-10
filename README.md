@@ -90,6 +90,13 @@ only needs `SKILL.md`, `scripts/`, and `lib/`; nothing else in this repo is requ
    "Check the comments on this forum thread: <url>"
    ```
 
+   Already know specific YouTube videos or tweets you want checked? Just include the links in the same
+   request — e.g. "...and also check these videos: <url1>, <url2>". These are collected **in addition to**
+   BuzzLens's own topic-based search of YouTube/Twitter, not instead of it — you get both the videos/tweets
+   you named and whatever the topic search finds on its own, in one combined dataset. Never asked about
+   separately; just mention them if you have them. See "Adding specific YouTube videos" and "Twitter/X:
+   topic search, replies, and specific tweets" below for the full details (up to 20 of each).
+
 4. **What happens next, automatically:**
    - The agent asks one more quick thing — how thorough the analysis should be (default: thorough, see
      "Analysis depth" below) — then collects real comments/posts from the sources you named, or the
